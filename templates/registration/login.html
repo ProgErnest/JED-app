@@ -1,0 +1,22 @@
+{% extends "catalog/base.html" %}
+
+{% block content %}
+<h1>Connexion — JED</h1>
+{% if form.errors %}
+<p style="color:#dc3545;">Nom d'utilisateur ou mot de passe incorrect.</p>
+{% endif %}
+<form method="post" novalidate>
+    {% csrf_token %}
+    <div class="form-group">
+        {{ form.username.label_tag }}
+        {{ form.username }}
+        {{ form.username.errors }}
+    </div>
+    <div class="form-group">
+        {{ form.password.label_tag }}
+        {{ form.password }}
+        {{ form.password.errors }}
+    </div>
+    <button type="submit">Se connecter</button>
+</form>
+{% endblock %}

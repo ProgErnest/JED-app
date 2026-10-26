@@ -27,8 +27,13 @@ class ProductListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView)
     activity_slug_kwarg = "activity_slug"
 
     def get_queryset(self):
-        activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
-        return Product.objects.filter(activity=activity).order_by("name")
+        self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        return Product.objects.filter(activity=self.activity).order_by("name")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = self.activity
+        return context
 
 
 class ProductCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, CreateView):
@@ -39,6 +44,11 @@ class ProductCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, CreateV
 
     def get_activity(self):
         return get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = self.get_activity()
+        return context
 
     def form_valid(self, form):
         form.instance.activity = self.get_activity()
@@ -63,6 +73,13 @@ class ProductUpdateView(LoginRequiredMixin, ActivityAccessRequiredMixin, UpdateV
             activity__slug=self.kwargs["activity_slug"]
         )
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = get_object_or_404(
+            Activity, slug=self.kwargs["activity_slug"]
+        )
+        return context
+
     def form_valid(self, form):
         form.instance._current_user = self.request.user
         return super().form_valid(form)
@@ -81,8 +98,13 @@ class ServiceListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView)
     activity_slug_kwarg = "activity_slug"
 
     def get_queryset(self):
-        activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
-        return Service.objects.filter(activity=activity).order_by("name")
+        self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        return Service.objects.filter(activity=self.activity).order_by("name")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = self.activity
+        return context
 
 
 class ServiceCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, CreateView):
@@ -93,6 +115,11 @@ class ServiceCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, CreateV
 
     def get_activity(self):
         return get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = self.get_activity()
+        return context
 
     def form_valid(self, form):
         form.instance.activity = self.get_activity()
@@ -116,6 +143,13 @@ class ServiceUpdateView(LoginRequiredMixin, ActivityAccessRequiredMixin, UpdateV
         return Service.objects.filter(
             activity__slug=self.kwargs["activity_slug"]
         )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = get_object_or_404(
+            Activity, slug=self.kwargs["activity_slug"]
+        )
+        return context
 
     def form_valid(self, form):
         form.instance._current_user = self.request.user

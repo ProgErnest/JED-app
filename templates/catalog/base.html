@@ -44,7 +44,7 @@
     <nav class="navbar">
         <a href="{% url 'accounts:home' %}">Accueil</a>
         <a href="{% url 'catalog:home' %}" class="active">Catalogue</a>
-        {% if user.is_authenticated %}
+        {% if user.is_authenticated and activity %}
         <a href="{% url 'accounts:activity_detail' activity_slug=activity.slug %}" style="margin-left:auto;">Activité : {{ activity.name }}</a>
         {% endif %}
     </nav>

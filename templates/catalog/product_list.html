@@ -26,7 +26,7 @@
             <td>{{ product.is_active|yesno:"Actif,Inactif" }}</td>
             <td>{{ product.updated_at|date:"d/m/Y H:i" }}</td>
             <td class="actions">
-                <a href="{% url 'catalog:product_edit' activity_slug=activity.slug slug=product.slug %}" class="btn btn-secondary">Modifier</a>
+                <a href="{% url 'catalog:product_edit' activity_slug=product.activity.slug slug=product.slug %}" class="btn btn-secondary">Modifier</a>
             </td>
         </tr>
         {% endfor %}

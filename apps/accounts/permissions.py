@@ -56,6 +56,8 @@ def user_has_activity_access(user, activity) -> bool:
     if not user or not user.is_authenticated:
         return False
 
+    if user.is_superuser:
+        return True
     # Un GLOBAL a accès à toute activité, quelle qu'elle soit.
     if get_user_memberships(user).filter(role=Role.GLOBAL).exists():
         return True
