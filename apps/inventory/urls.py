@@ -1,0 +1,19 @@
+from django.urls import path
+
+from . import views
+
+app_name = "inventory"
+
+urlpatterns = [
+    path("", views.InventoryHomeView.as_view(), name="home"),
+    path(
+        "<slug:activity_slug>/mouvements/",
+        views.StockMovementListView.as_view(),
+        name="movement_list",
+    ),
+    path(
+        "<slug:activity_slug>/mouvements/entree/",
+        views.StockEntryCreateView.as_view(),
+        name="movement_entry_add",
+    ),
+]

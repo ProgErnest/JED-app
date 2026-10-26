@@ -1,0 +1,37 @@
+{% extends "catalog/base.html" %}
+
+{% block content %}
+<h1>Entrée de stock — {{ activity.name }}</h1>
+<form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="form-row">
+        <div class="form-group">
+            {{ form.product.label_tag }}
+            {{ form.product }}
+            {{ form.product.errors }}
+        </div>
+        <div class="form-group">
+            {{ form.quantity.label_tag }}
+            {{ form.quantity }}
+            {{ form.quantity.errors }}
+            <p class="hint">Nombre d'unités reçues.</p>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            {{ form.unit_cost.label_tag }}
+            {{ form.unit_cost }}
+            {{ form.unit_cost.errors }}
+            <p class="hint">Coût unitaire d'achat.</p>
+        </div>
+        <div class="form-group">
+            {{ form.reason.label_tag }}
+            {{ form.reason }}
+            {{ form.reason.errors }}
+        </div>
+    </div>
+    <button type="submit">Enregistrer l'entrée</button>
+    <a href="{% url 'inventory:movement_list' activity_slug=activity.slug %}" class="cancel btn btn-secondary">Annuler</a>
+</form>
+{% endblock %}

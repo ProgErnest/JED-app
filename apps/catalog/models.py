@@ -29,6 +29,8 @@ class Product(models.Model):
     description = models.TextField("description", blank=True)
     price = models.DecimalField("prix de vente", max_digits=10, decimal_places=2)
     is_active = models.BooleanField("actif", default=True, help_text="Actif immédiatement (A8).")
+    stock_quantity = models.IntegerField("quantité en stock", default=0, help_text="Peut être négatif en cas d'erreur de saisie.")
+    average_cost = models.DecimalField("coût moyen", max_digits=10, decimal_places=2, default=0, help_text="Coût moyen pondéré d'achat. Non fiable si le stock est nul ou négatif.")
     created_at = models.DateTimeField("créé le", auto_now_add=True)
     updated_at = models.DateTimeField("modifié le", auto_now=True)
 

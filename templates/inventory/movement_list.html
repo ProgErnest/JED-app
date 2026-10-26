@@ -1,0 +1,38 @@
+{% extends "catalog/base.html" %}
+
+{% block content %}
+<h1>Mouvements de stock — {{ activity.name }}</h1>
+<p>
+    <a href="{% url 'inventory:movement_entry_add' activity_slug=activity.slug %}" class="btn">+ Entrée de stock</a>
+</p>
+{% if movements %}
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Produit</th>
+            <th>Type</th>
+            <th>Quantité</th>
+            <th>Coût unitaire</th>
+            <th>Auteur</th>
+            <th>Motif</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for movement in movements %}
+        <tr>
+            <td>{{ movement.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{{ movement.product.name }}</td>
+            <td>{{ movement.get_movement_type_display }}</td>
+            <td>{{ movement.quantity }}</td>
+            <td>{{ movement.unit_cost|default:"—" }} €</td>
+            <td>{{ movement.user.username }}</td>
+            <td>{{ movement.reason|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Aucun mouvement de stock pour cette activité.</p>
+{% endif %}
+{% endblock %}
