@@ -45,7 +45,9 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Tierce partie
-    # -- apps métier (ajoutées au fil des tâches JED-02 à JED-10)
+    # Apps métier (ajoutées au fil des tâches JED-02 à JED-10)
+    "apps.activities",
+    "apps.accounts",
 ]
 
 MIDDLEWARE = [
@@ -96,8 +98,11 @@ DATABASES = {
 # Modèle utilisateur
 # --------------------------------------------------------------------------- #
 
-# Le modèle personnalisé sera défini dans JED-02 (apps.accounts).
-# AUTH_USER_MODEL = "accounts.User"
+# JED-02 conserve le modèle ``User`` par défaut de Django et ajoute
+# ``apps.accounts.ActivityMembership`` pour l'appartenance utilisateur → activité
+# avec rôle (GLOBAL / MANAGER / EMPLOYEE). Aucun modèle utilisateur personnalisé
+# n'est introduit ici pour ne pas casser les migrations ``auth`` déjà appliquées.
+# AUTH_USER_MODEL n'est donc pas défini.
 
 
 # --------------------------------------------------------------------------- #
