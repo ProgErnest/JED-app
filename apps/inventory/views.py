@@ -14,7 +14,7 @@ from django.views.generic import CreateView, ListView
 
 from apps.activities.models import Activity
 from apps.accounts.permissions import ActivityAccessRequiredMixin
-from .forms import StockEntryForm
+from .forms import StockCorrectionForm, StockEntryForm
 from .models import StockMovement
 from .services import record_stock_movement
 
@@ -71,6 +71,62 @@ class StockEntryCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, Crea
                 movement_type=form.instance.movement_type,
                 quantity=form.instance.quantity,
                 unit_cost=form.instance.unit_cost,
+                user=self.request.user,
+                reason=form.instance.reason,
+                activity=form.instance.activity,
+            )
+        except Exception as exc:  # pragma: no cover - validation métier
+            form.add_error(None, str(exc))
+            return self.form_invalid(form)
+        return redirect(
+            "inventory:movement_list",
+            activity_slug=self.kwargs["activity_slug"],
+        )
+
+    def get_success_url(self):
+        return reverse(
+            "inventory:movement_list",
+            kwargs={"activity_slug": self.kwargs["activity_slug"]},
+        )
+
+
+class StockCorrectionCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, CreateView):
+    """Saisie d'une correction/perte de stock (JED-06).
+
+    Le motif est obligatoire. La quantité est signée (ajout ou perte).
+    """
+
+    model = StockMovement
+    form_class = StockCorrectionForm
+    template_name = "inventory/movement_form.html"
+    activity_slug_kwarg = "activity_slug"
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["activity"] = get_object_or_404(
+            Activity, slug=self.kwargs["activity_slug"]
+        )
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = get_object_or_404(
+            Activity, slug=self.kwargs["activity_slug"]
+        )
+        context["page_title"] = "Correction de stock"
+        return context
+
+    def form_valid(self, form):
+        form.instance.activity = get_object_or_404(
+            Activity, slug=self.kwargs["activity_slug"]
+        )
+        form.instance.user = self.request.user
+        try:
+            record_stock_movement(
+                product=form.instance.product,
+                movement_type=form.instance.movement_type,
+                quantity=form.instance.quantity,
+                unit_cost=None,
                 user=self.request.user,
                 reason=form.instance.reason,
                 activity=form.instance.activity,

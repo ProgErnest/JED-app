@@ -16,4 +16,9 @@ urlpatterns = [
         views.StockEntryCreateView.as_view(),
         name="movement_entry_add",
     ),
+    path(
+        "<slug:activity_slug>/mouvements/correction/",
+        views.StockCorrectionCreateView.as_view(),
+        name="movement_correction_add",
+    ),
 ]

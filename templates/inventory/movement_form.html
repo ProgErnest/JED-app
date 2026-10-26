@@ -1,7 +1,7 @@
 {% extends "catalog/base.html" %}
 
 {% block content %}
-<h1>Entrée de stock — {{ activity.name }}</h1>
+<h1>{{ page_title|default:"Mouvement de stock" }} — {{ activity.name }}</h1>
 <form method="post" novalidate>
     {% csrf_token %}
     {{ form.non_field_errors }}
@@ -15,9 +15,14 @@
             {{ form.quantity.label_tag }}
             {{ form.quantity }}
             {{ form.quantity.errors }}
+            {% if page_title == "Correction de stock" %}
+            <p class="hint">Quantité signée : positive pour un ajout, négative pour une perte.</p>
+            {% else %}
             <p class="hint">Nombre d'unités reçues.</p>
+            {% endif %}
         </div>
     </div>
+    {% if form.unit_cost %}
     <div class="form-row">
         <div class="form-group">
             {{ form.unit_cost.label_tag }}
@@ -25,13 +30,19 @@
             {{ form.unit_cost.errors }}
             <p class="hint">Coût unitaire d'achat.</p>
         </div>
+    </div>
+    {% endif %}
+    <div class="form-row">
         <div class="form-group">
             {{ form.reason.label_tag }}
             {{ form.reason }}
             {{ form.reason.errors }}
+            {% if page_title == "Correction de stock" %}
+            <p class="hint">Le motif est obligatoire pour une correction.</p>
+            {% endif %}
         </div>
     </div>
-    <button type="submit">Enregistrer l'entrée</button>
+    <button type="submit">Enregistrer</button>
     <a href="{% url 'inventory:movement_list' activity_slug=activity.slug %}" class="cancel btn btn-secondary">Annuler</a>
 </form>
 {% endblock %}

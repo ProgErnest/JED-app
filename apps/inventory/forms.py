@@ -32,3 +32,34 @@ class StockEntryForm(forms.ModelForm):
         cleaned = super().clean()
         cleaned["movement_type"] = StockMovement.MovementType.ENTRY
         return cleaned
+
+
+class StockCorrectionForm(forms.ModelForm):
+    """Saisie d'une correction/perte de stock (JED-06).
+
+    Le motif est obligatoire. La quantité est signée : positive pour un
+    ajout, négative pour une perte.
+    """
+
+    class Meta:
+        model = StockMovement
+        fields = ["product", "quantity", "reason", "movement_type"]
+        widgets = {
+            "quantity": forms.NumberInput(attrs={"step": "1"}),
+            "reason": forms.TextInput(),
+            "movement_type": forms.HiddenInput(),
+        }
+
+    def __init__(self, *args, activity=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if activity is not None:
+            self.fields["product"].queryset = self.fields["product"].queryset.filter(
+                activity=activity
+            )
+        self.fields["movement_type"].required = False
+        self.fields["reason"].required = True
+
+    def clean(self):
+        cleaned = super().clean()
+        cleaned["movement_type"] = StockMovement.MovementType.CORRECTION
+        return cleaned
