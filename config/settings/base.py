@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     # Apps métier (ajoutées au fil des tâches JED-02 à JED-10)
     "apps.activities",
     "apps.accounts",
+    "apps.catalog",
 ]
 
 MIDDLEWARE = [

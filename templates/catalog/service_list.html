@@ -1,0 +1,38 @@
+{% extends "catalog/base.html" %}
+
+{% block content %}
+<h1>Services — {{ activity.name }}</h1>
+<p>
+    <a href="{% url 'catalog:service_add' activity_slug=activity.slug %}" class="btn">+ Nouveau service</a>
+</p>
+{% if services %}
+<table>
+    <thead>
+        <tr>
+            <th>Nom</th>
+            <th>Prix</th>
+            <th>Durée</th>
+            <th>Statut</th>
+            <th>Modifié le</th>
+            <th class="actions">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for service in services %}
+        <tr>
+            <td>{{ service.name }}</td>
+            <td>{{ service.price }} €</td>
+            <td>{{ service.duration_minutes }} min</td>
+            <td>{{ service.is_active|yesno:"Actif,Inactif" }}</td>
+            <td>{{ service.updated_at|date:"d/m/Y H:i" }}</td>
+            <td class="actions">
+                <a href="{% url 'catalog:service_edit' activity_slug=activity.slug slug=service.slug %}" class="btn btn-secondary">Modifier</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Aucun service pour cette activité.</p>
+{% endif %}
+{% endblock %}
