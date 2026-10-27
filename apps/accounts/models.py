@@ -51,6 +51,21 @@ class ActivityMembership(models.Model):
                 fields=["user", "activity"],
                 name="unique_user_activity_membership",
             ),
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(role=Role.GLOBAL),
+                name="unique_global_membership_per_user",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(role=Role.GLOBAL, activity__isnull=True)
+                    | models.Q(
+                        role__in=[Role.MANAGER, Role.EMPLOYEE],
+                        activity__isnull=False,
+                    )
+                ),
+                name="membership_role_activity_consistency",
+            ),
         ]
         ordering = ["user__username", "activity__name"]
 
