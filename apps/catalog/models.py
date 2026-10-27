@@ -44,37 +44,46 @@ class Product(models.Model):
         return f"{self.name} ({self.activity.name})"
 
     def save(self, *args, **kwargs):
+        previous_price = None
+        update_fields = kwargs.get("update_fields")
+        price_will_be_saved = update_fields is None or "price" in update_fields
         if self.pk is not None:
             try:
-                previous = Product.objects.only("price").get(pk=self.pk)
+                previous_price = Product.objects.only("price").get(pk=self.pk).price
             except Product.DoesNotExist:
-                previous = None
-            if previous is not None and previous.price != self.price:
-                now = timezone.now()
-                PriceHistory.objects.filter(
-                    content_type=ContentType.objects.get_for_model(Product),
-                    object_id=self.pk,
-                    ends_at__isnull=True,
-                ).update(ends_at=now)
-                PriceHistory.objects.create(
-                    content_type=ContentType.objects.get_for_model(Product),
-                    object_id=self.pk,
-                    price=previous.price,
-                    starts_at=previous.updated_at or now,
-                    ends_at=now,
-                    created_by=getattr(self, "_current_user", None),
-                )
+                pass
+
         super().save(*args, **kwargs)
-        PriceHistory.objects.update_or_create(
-            content_type=ContentType.objects.get_for_model(Product),
+        content_type = ContentType.objects.get_for_model(Product)
+        current_history = PriceHistory.objects.filter(
+            content_type=content_type,
             object_id=self.pk,
             ends_at__isnull=True,
-            defaults={
-                "price": self.price,
-                "starts_at": self.updated_at,
-                "created_by": getattr(self, "_current_user", None),
-            },
-        )
+        ).first()
+
+        if current_history is None:
+            PriceHistory.objects.create(
+                content_type=content_type,
+                object_id=self.pk,
+                price=self.price,
+                starts_at=self.updated_at,
+                created_by=getattr(self, "_current_user", None),
+            )
+        elif (
+            price_will_be_saved
+            and previous_price is not None
+            and previous_price != self.price
+        ):
+            now = timezone.now()
+            current_history.ends_at = now
+            current_history.save(update_fields=["ends_at"])
+            PriceHistory.objects.create(
+                content_type=content_type,
+                object_id=self.pk,
+                price=self.price,
+                starts_at=now,
+                created_by=getattr(self, "_current_user", None),
+            )
 
 
 class Service(models.Model):
@@ -105,37 +114,46 @@ class Service(models.Model):
         return f"{self.name} ({self.activity.name})"
 
     def save(self, *args, **kwargs):
+        previous_price = None
+        update_fields = kwargs.get("update_fields")
+        price_will_be_saved = update_fields is None or "price" in update_fields
         if self.pk is not None:
             try:
-                previous = Service.objects.only("price").get(pk=self.pk)
+                previous_price = Service.objects.only("price").get(pk=self.pk).price
             except Service.DoesNotExist:
-                previous = None
-            if previous is not None and previous.price != self.price:
-                now = timezone.now()
-                PriceHistory.objects.filter(
-                    content_type=ContentType.objects.get_for_model(Service),
-                    object_id=self.pk,
-                    ends_at__isnull=True,
-                ).update(ends_at=now)
-                PriceHistory.objects.create(
-                    content_type=ContentType.objects.get_for_model(Service),
-                    object_id=self.pk,
-                    price=previous.price,
-                    starts_at=previous.updated_at or now,
-                    ends_at=now,
-                    created_by=getattr(self, "_current_user", None),
-                )
+                pass
+
         super().save(*args, **kwargs)
-        PriceHistory.objects.update_or_create(
-            content_type=ContentType.objects.get_for_model(Service),
+        content_type = ContentType.objects.get_for_model(Service)
+        current_history = PriceHistory.objects.filter(
+            content_type=content_type,
             object_id=self.pk,
             ends_at__isnull=True,
-            defaults={
-                "price": self.price,
-                "starts_at": self.updated_at,
-                "created_by": getattr(self, "_current_user", None),
-            },
-        )
+        ).first()
+
+        if current_history is None:
+            PriceHistory.objects.create(
+                content_type=content_type,
+                object_id=self.pk,
+                price=self.price,
+                starts_at=self.updated_at,
+                created_by=getattr(self, "_current_user", None),
+            )
+        elif (
+            price_will_be_saved
+            and previous_price is not None
+            and previous_price != self.price
+        ):
+            now = timezone.now()
+            current_history.ends_at = now
+            current_history.save(update_fields=["ends_at"])
+            PriceHistory.objects.create(
+                content_type=content_type,
+                object_id=self.pk,
+                price=self.price,
+                starts_at=now,
+                created_by=getattr(self, "_current_user", None),
+            )
 
 
 class PriceHistory(models.Model):
