@@ -1,0 +1,38 @@
+{% extends "catalog/base.html" %}
+
+{% block content %}
+<h1>Ticket #{{ sale.pk }} — {{ activity.name }} — {{ sale.created_at|date:"d/m/y H:i" }}</h1>
+<p><strong>Employé :</strong> {{ sale.user.get_full_name|default:sale.user.username }}</p>
+<p><strong>Total :</strong> {{ sale.total }} €</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Article</th>
+            <th class="text-end">Qté</th>
+            <th class="text-end">Prix unitaire</th>
+            <th class="text-end">Coût</th>
+            <th class="text-end">Total</th>
+            <th class="text-end">Marge</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for line in sale.lines.all %}
+        <tr>
+            <td>{{ line.item_display }}</td>
+            <td class="text-end">{{ line.quantity }}</td>
+            <td class="text-end">{{ line.unit_price }} €</td>
+            <td class="text-end">{{ line.cost }} €</td>
+            <td class="text-end">{{ line.total }} €</td>
+            <td class="text-end">{{ line.margin }} €</td>
+        </tr>
+        {% endfor %}
+        <tr>
+            <td colspan="4" class="text-end"><strong>Total</strong></td>
+            <td class="text-end"><strong>{{ sale.total }} €</strong></td>
+            <td></td>
+        </tr>
+    </tbody>
+</table>
+<p><a href="{% url 'sales:sale_list' activity_slug=activity.slug %}" class="btn btn-secondary">Retour aux tickets</a></p>
+{% endblock %}

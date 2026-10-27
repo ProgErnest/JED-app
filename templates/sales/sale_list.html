@@ -1,0 +1,47 @@
+{% extends "catalog/base.html" %}
+{% load static %}
+
+{% block content %}
+<h1>Tickets de caisse — {{ activity.name }}</h1>
+<p><a href="{% url 'sales:sale_add' activity_slug=activity.slug %}" class="btn">+ Nouveau ticket</a></p>
+
+{% if sales %}
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Date</th>
+            <th>Employé</th>
+            <th class="text-end">Total</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for sale in sales %}
+        <tr>
+            <td>{{ sale.pk }}</td>
+            <td>{{ sale.created_at|date:"d/m/y H:i" }}</td>
+            <td>{{ sale.user.get_full_name|default:sale.user.username }}</td>
+            <td class="text-end">{{ sale.total }} €</td>
+            <td class="actions">
+                <a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">Détails</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if is_paginated %}
+<div class="pagination">
+    {% if page_obj.has_previous %}
+    <a href="?page={{ page_obj.previous_page_number }}">Précédent</a>
+    {% endif %}
+    Page {{ page_obj.number }} sur {{ paginator.num_pages }}
+    {% if page_obj.has_next %}
+    <a href="?page={{ page_obj.next_page_number }}">Suivant</a>
+    {% endif %}
+</div>
+{% endif %}
+{% else %}
+<p>Aucun ticket pour le moment.</p>
+{% endif %}
+{% endblock %}
