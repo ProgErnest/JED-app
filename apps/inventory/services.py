@@ -6,6 +6,9 @@ transaction atomique. Aucun stock n'est modifié hors de ce service.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
+from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
@@ -43,52 +46,75 @@ def record_stock_movement(product, movement_type, quantity, unit_cost=None, user
 
     Retourne le produit mis à jour.
     """
-    if not user:
+    if not user or not getattr(user, "is_authenticated", False):
         raise ValidationError("L'auteur est obligatoire.")
     if activity is None:
         activity = product.activity
+    if activity.pk != product.activity_id:
+        raise ValidationError("L'activité du mouvement doit correspondre au produit.")
 
-    # Quantité signée selon le type de mouvement
-    if movement_type == StockMovement.MovementType.ENTRY:
-        signed_qty = abs(quantity)  # entrée : toujours positif
-    elif movement_type == StockMovement.MovementType.EXIT:
-        signed_qty = -abs(quantity)  # sortie : toujours négatif
-    else:  # CORRECTION
-        signed_qty = quantity  # signé tel quel
+    movement_types = StockMovement.MovementType
+    if movement_type not in movement_types.values:
+        raise ValidationError("Type de mouvement invalide.")
 
-    stock_avant = product.stock_quantity
+    if not isinstance(quantity, int) or isinstance(quantity, bool):
+        raise ValidationError("La quantité doit être un nombre entier.")
+    if movement_type == movement_types.ENTRY:
+        if quantity <= 0:
+            raise ValidationError("La quantité d'entrée doit être positive.")
+        if unit_cost is None:
+            raise ValidationError("Le coût unitaire est obligatoire pour une entrée.")
+        if (
+            not isinstance(unit_cost, Decimal)
+            or not unit_cost.is_finite()
+            or unit_cost < 0
+        ):
+            raise ValidationError("Le coût unitaire doit être un montant positif ou nul.")
+    elif unit_cost is not None:
+        raise ValidationError("Le coût unitaire ne s'applique qu'aux entrées de stock.")
+    if movement_type in (movement_types.EXIT, movement_types.CORRECTION) and quantity == 0:
+        raise ValidationError("Le mouvement doit modifier le stock.")
 
     with transaction.atomic():
-        if movement_type == StockMovement.MovementType.ENTRY:
-            if unit_cost is None:
-                raise ValidationError("Le coût unitaire est obligatoire pour une entrée.")
+        Product = apps.get_model("catalog", "Product")
+        locked_product = Product.objects.select_for_update().get(pk=product.pk)
+        if activity.pk != locked_product.activity_id:
+            raise ValidationError("L'activité du mouvement doit correspondre au produit.")
+
+        if movement_type == movement_types.ENTRY:
+            signed_qty = quantity
+            stock_avant = locked_product.stock_quantity
             nouveau_stock = stock_avant + signed_qty
 
             if stock_avant > 0:
                 # Coût moyen pondéré
-                total_value = stock_avant * product.average_cost + signed_qty * unit_cost
-                product.average_cost = total_value / nouveau_stock
+                total_value = (
+                    stock_avant * locked_product.average_cost
+                    + signed_qty * unit_cost
+                )
+                locked_product.average_cost = total_value / nouveau_stock
             elif stock_avant == 0:
-                product.average_cost = unit_cost
+                locked_product.average_cost = unit_cost
             else:  # stock_avant < 0
                 # Règle A4 : si l'entrée fait repasser le stock au-dessus de zéro,
                 # le coût moyen repart du coût unitaire de cette entrée.
                 if nouveau_stock > 0:
-                    product.average_cost = unit_cost
+                    locked_product.average_cost = unit_cost
                 # sinon : reste <= 0, average_cost inchangé (non fiable)
 
-            product.stock_quantity = nouveau_stock
+            locked_product.stock_quantity = nouveau_stock
+        elif movement_type == movement_types.EXIT:
+            signed_qty = -abs(quantity)
+            locked_product.stock_quantity += signed_qty
 
-        elif movement_type == StockMovement.MovementType.EXIT:
-            product.stock_quantity += signed_qty  # signé négatif
+        else:  # CORRECTION
+            signed_qty = quantity
+            locked_product.stock_quantity += signed_qty
 
-        elif movement_type == StockMovement.MovementType.CORRECTION:
-            product.stock_quantity += signed_qty
+        locked_product.save()
 
-        product.save()
-
-        StockMovement.objects.create(
-            product=product,
+        movement = StockMovement.objects.create(
+            product=locked_product,
             movement_type=movement_type,
             quantity=signed_qty,
             unit_cost=unit_cost if movement_type == StockMovement.MovementType.ENTRY else None,
@@ -97,4 +123,8 @@ def record_stock_movement(product, movement_type, quantity, unit_cost=None, user
             reason=reason,
         )
 
+    product.stock_quantity = locked_product.stock_quantity
+    product.average_cost = locked_product.average_cost
+    product.updated_at = locked_product.updated_at
+    product._last_stock_movement = movement
     return product
