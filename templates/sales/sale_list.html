@@ -3,7 +3,10 @@
 
 {% block content %}
 <h1>Tickets de caisse — {{ activity.name }}</h1>
-<p><a href="{% url 'sales:sale_add' activity_slug=activity.slug %}" class="btn">+ Nouveau ticket</a></p>
+<p>
+    <a href="{% url 'sales:sale_add' activity_slug=activity.slug %}" class="btn">+ Nouveau ticket</a>
+    <a href="{% url 'sales:sale_cancellation_list' activity_slug=activity.slug %}">Journal des annulations</a>
+</p>
 
 {% if sales %}
 <table>
@@ -13,6 +16,7 @@
             <th>Date</th>
             <th>Employé</th>
             <th class="text-end">Total</th>
+            <th>Statut</th>
             <th></th>
         </tr>
     </thead>
@@ -23,6 +27,7 @@
             <td>{{ sale.created_at|date:"d/m/y H:i" }}</td>
             <td>{{ sale.user.get_full_name|default:sale.user.username }}</td>
             <td class="text-end">{{ sale.total }} €</td>
+            <td>{% if sale.is_canceled %}Annulé{% else %}Actif{% endif %}</td>
             <td class="actions">
                 <a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">Détails</a>
             </td>

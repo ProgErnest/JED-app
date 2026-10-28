@@ -25,9 +25,9 @@ from apps.accounts.models import ActivityMembership, Role
 from apps.catalog.models import Product, Service
 from apps.inventory.models import StockMovement
 
-from ..models import Sale, SaleLine
+from ..models import Sale, SaleCancellation, SaleLine
 from ..forms import SaleLineForm, SaleLineFormSet
-from ..services import create_sale
+from ..services import cancel_sale, create_sale
 
 
 class SaleModelTest(TestCase):
@@ -202,6 +202,91 @@ class CreateSaleServiceTest(TestCase):
         self.assertEqual(Sale.objects.count(), before)
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 100)
+
+
+class CancelSaleServiceTest(TestCase):
+    def setUp(self):
+        self.activity = Activity.objects.create(name="Shop", slug="cancel-shop")
+        self.user = User.objects.create_user("seller-cancel", password="t123")
+        ActivityMembership.objects.create(
+            user=self.user, activity=self.activity, role=Role.EMPLOYEE
+        )
+        self.product = Product.objects.create(
+            activity=self.activity,
+            name="Soap",
+            slug="soap-cancel",
+            unit="piece",
+            price=Decimal("5.00"),
+            stock_quantity=10,
+            average_cost=Decimal("2.00"),
+        )
+        self.service = Service.objects.create(
+            activity=self.activity,
+            name="Consultation",
+            slug="consult-cancel",
+            price=Decimal("20.00"),
+        )
+        self.sale = create_sale(
+            self.activity,
+            self.user,
+            [
+                {"item": self.product, "quantity": 2},
+                {"item": self.service, "quantity": 1},
+            ],
+        )
+
+    def test_cancellation_restores_product_stock_once_and_keeps_sale(self):
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 8)
+
+        cancellation = cancel_sale(self.sale, self.user, "Saisie en double")
+        repeated = cancel_sale(self.sale, self.user, "Autre motif")
+
+        self.product.refresh_from_db()
+        self.sale.refresh_from_db()
+        self.assertEqual(cancellation.pk, repeated.pk)
+        self.assertTrue(self.sale.is_canceled)
+        self.assertEqual(self.sale.lines.count(), 2)
+        self.assertEqual(self.product.stock_quantity, 10)
+        self.assertEqual(
+            StockMovement.objects.filter(
+                product=self.product,
+                movement_type=StockMovement.MovementType.CORRECTION,
+            ).count(),
+            1,
+        )
+        self.assertEqual(cancellation.user, self.user)
+        self.assertEqual(cancellation.reason, "Saisie en double")
+
+    def test_cancellation_requires_nonblank_reason(self):
+        with self.assertRaises(ValidationError):
+            cancel_sale(self.sale, self.user, "   ")
+        self.assertFalse(self.sale.is_canceled)
+
+    def test_employee_cannot_cancel_another_users_sale(self):
+        colleague = User.objects.create_user("colleague-cancel", password="t123")
+        ActivityMembership.objects.create(
+            user=colleague, activity=self.activity, role=Role.EMPLOYEE
+        )
+
+        with self.assertRaises(ValidationError):
+            cancel_sale(self.sale, colleague, "Not my sale")
+
+        self.assertFalse(self.sale.is_canceled)
+
+    def test_failed_stock_restoration_rolls_back_cancellation(self):
+        from unittest.mock import patch
+
+        with patch(
+            "apps.inventory.services.record_stock_movement",
+            side_effect=RuntimeError("stock movement failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "stock movement failed"):
+                cancel_sale(self.sale, self.user, "Rollback test")
+
+        self.assertFalse(SaleCancellation.objects.filter(sale=self.sale).exists())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 8)
 
 
 class SaleLineFormTest(TestCase):
@@ -454,6 +539,132 @@ class SaleViewsTest(TestCase):
         detail_url = reverse("sales:sale_detail",
                              kwargs={"activity_slug": self.activity.slug, "pk": sale.pk})
         self.assertEqual(self.client.get(detail_url).status_code, 403)
+
+
+class SaleCancellationViewsTest(TestCase):
+    def setUp(self):
+        self.activity = Activity.objects.create(name="Shop", slug="cancel-view-shop")
+        self.other_activity = Activity.objects.create(name="Salon", slug="cancel-view-salon")
+        self.employee = User.objects.create_user("cancel-employee", password="t123")
+        ActivityMembership.objects.create(
+            user=self.employee, activity=self.activity, role=Role.EMPLOYEE
+        )
+        self.colleague = User.objects.create_user("cancel-colleague", password="t123")
+        ActivityMembership.objects.create(
+            user=self.colleague, activity=self.activity, role=Role.EMPLOYEE
+        )
+        self.manager = User.objects.create_user("cancel-manager", password="t123")
+        ActivityMembership.objects.create(
+            user=self.manager, activity=self.activity, role=Role.MANAGER
+        )
+        self.outsider = User.objects.create_user("cancel-outsider", password="t123")
+        ActivityMembership.objects.create(
+            user=self.outsider, activity=self.other_activity, role=Role.EMPLOYEE
+        )
+        self.product = Product.objects.create(
+            activity=self.activity,
+            name="Soap",
+            slug="cancel-view-soap",
+            unit="piece",
+            price=Decimal("5.00"),
+            stock_quantity=8,
+            average_cost=Decimal("2.00"),
+        )
+        self.sale = create_sale(
+            self.activity, self.employee, [{"item": self.product, "quantity": 2}]
+        )
+
+    def cancel_url(self, sale=None):
+        return reverse(
+            "sales:sale_cancel",
+            kwargs={"activity_slug": self.activity.slug, "pk": (sale or self.sale).pk},
+        )
+
+    def test_employee_can_cancel_own_sale_with_reason(self):
+        self.client.force_login(self.employee)
+
+        response = self.client.post(self.cancel_url(), {"reason": "Ticket en double"})
+
+        cancellation = SaleCancellation.objects.get(sale=self.sale)
+        self.assertRedirects(
+            response,
+            reverse(
+                "sales:sale_cancellation_detail",
+                kwargs={"activity_slug": self.activity.slug, "pk": cancellation.pk},
+            ),
+        )
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 8)
+
+    def test_blank_reason_is_rejected_without_cancelling(self):
+        self.client.force_login(self.employee)
+
+        response = self.client.post(self.cancel_url(), {"reason": "  "})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SaleCancellation.objects.filter(sale=self.sale).exists())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 6)
+
+    def test_repeated_post_does_not_restore_stock_twice(self):
+        self.client.force_login(self.employee)
+        url = self.cancel_url()
+
+        self.client.post(url, {"reason": "Ticket en double"})
+        self.client.post(url, {"reason": "Repetition"})
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 8)
+        self.assertEqual(SaleCancellation.objects.filter(sale=self.sale).count(), 1)
+        self.assertEqual(
+            StockMovement.objects.filter(
+                product=self.product,
+                movement_type=StockMovement.MovementType.CORRECTION,
+            ).count(),
+            1,
+        )
+
+    def test_employee_cannot_cancel_colleagues_sale(self):
+        colleague_sale = create_sale(
+            self.activity, self.colleague, [{"item": self.product, "quantity": 1}]
+        )
+        self.client.force_login(self.employee)
+
+        response = self.client.get(self.cancel_url(colleague_sale))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_manager_can_cancel_sale_in_activity(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.post(self.cancel_url(), {"reason": "Erreur de saisie"})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(SaleCancellation.objects.filter(sale=self.sale, user=self.manager).exists())
+
+    def test_employee_cancellation_journal_is_limited_to_own_sales(self):
+        colleague_sale = create_sale(
+            self.activity, self.colleague, [{"item": self.product, "quantity": 1}]
+        )
+        cancel_sale(self.sale, self.employee, "Mon ticket")
+        cancel_sale(colleague_sale, self.colleague, "Ticket collègue")
+        self.client.force_login(self.employee)
+
+        response = self.client.get(
+            reverse("sales:sale_cancellation_list", kwargs={"activity_slug": self.activity.slug})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["cancellations"].values_list("sale_id", flat=True)), [self.sale.pk])
+
+    def test_outsider_cannot_read_activity_cancellation_journal(self):
+        self.client.force_login(self.outsider)
+
+        response = self.client.get(
+            reverse("sales:sale_cancellation_list", kwargs={"activity_slug": self.activity.slug})
+        )
+
+        self.assertEqual(response.status_code, 403)
 
 
 

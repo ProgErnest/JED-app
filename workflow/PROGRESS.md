@@ -4,9 +4,9 @@ Mettre à jour ce fichier après la revue de chaque tâche. Une tâche n'est « 
 
 ## État
 
-- **Terminé** : workflow initial et intégration des décisions métier A2–A8 dans le registre et le document de conception ; JED-01 — socle Django et configuration; JED-05 — approvisionnements et coût moyen; JED-06 P0 — corrections traçables de stock.
-- **En cours** : JED-06 P1 — inventaire physique hebdomadaire, à réaliser après stabilisation des flux P0.
-- **Prochaine tâche** : JED-07 — ventes et lignes historiques.
+- **Terminé** : workflow initial et intégration des décisions métier A2–A8 dans le registre et le document de conception ; JED-01 — socle Django et configuration; JED-05 — approvisionnements et coût moyen; JED-06 P0 — corrections traçables de stock; JED-07 — ventes et lignes historiques; JED-08 — annulations de vente et journal d'audit métier.
+- **Reporté** : JED-06 P1 — inventaire physique hebdomadaire, à réaliser après stabilisation des flux P0.
+- **Prochaine tâche** : JED-09 — dépenses catégorisées.
 - **Décisions en attente** : aucune parmi A2 à A8; voir [DECISIONS.md](DECISIONS.md).
 - **Problèmes connus** : date cible du 3 novembre 2026 très serrée; les deux réserves de déploiement JED-01 (chargement du fichier `.env` et dépendance Gunicorn) restent à traiter.
 
@@ -22,11 +22,14 @@ Mettre à jour ce fichier après la revue de chaque tâche. Une tâche n'est « 
 | 2026-10-27 | JED-05 — approvisionnements et coût moyen (correctifs) | Service central validant auteur, activité/produit, type, quantité et coût; produit verrouillé pendant l'écriture transactionnelle; cas A4 et calcul pondéré couverts. 18 tests inventaire/permissions/ventes OK; `manage.py check`, `makemigrations --check --dry-run` et `git diff --check` OK. En attente de validation et commit du porteur. | À committer par le porteur |
 | 2026-10-28 | JED-05 — validation finale | Validation du porteur reçue. Le service d'approvisionnement et les tests sont déjà présents dans l'historique Git; aucun commit supplémentaire requis. | `b7bd84f` |
 | 2026-10-28 | JED-06 — corrections de stock (P0) | Motif non blanc imposé aussi par le service central; mouvements non modifiables/supprimables via admin; références produit/activité protégées contre suppression en cascade; champs de stock en lecture seule dans l'admin produit; lien de correction ajouté à l'historique. 16 tests inventory OK; `manage.py check`, `makemigrations --check --dry-run`, diagnostics et `git diff --check` OK. Inventaire physique hebdomadaire P1 non inclus. | Correctifs en attente de commit |
+| 2026-10-28 | JED-06 — validation et commit P0 | JED-06 P0 validée; correctifs et migration de protection des mouvements commités. | `b4be97a` |
+| 2026-10-28 | JED-07 — ventes et lignes historiques | Vente groupée produits/prestations, snapshots prix/coût, mouvements atomiques, permissions et correctifs d'intégrité/marge; 39 tests sales OK; checks Django, migrations et diff propres. | `afa3593`, correctifs `b8b4d38` |
+| 2026-10-28 | JED-08 — annulations et audit métier | Annulation idempotente, motifs obligatoires, restauration du stock par correction atomique et journal consultable; validation ciblée: `python manage.py test apps/sales apps/inventory --verbosity=1` -> 50 tests OK. | `feat: trace les annulations de vente` |
 
 ## À remplir à chaque passage
 
-- Tâche active : JED-06 P1 — inventaire physique hebdomadaire
+- Tâche active : JED-08 — annulations de vente et journal d'audit métier (validée)
 - Agent/outils utilisés : — (assistant IA via Cline/KiloCode), Python 3.14.4, Django 6.1.2
-- Changements et vérification : JED-05 validée par le porteur; correctifs JED-06 P0 appliqués et vérifiés, voir journal ci-dessus
-- Bloqueurs / décision attendue : définir/réaliser l'inventaire physique P1 selon la règle de concurrence prévue en conception; commit JED-06 P0 à enregistrer
-- Prochaine tâche débloquée : JED-07 — ventes et lignes historiques
+- Changements et vérification : lots JED-05, JED-06 P0 et JED-07 validés et commités; JED-08 validé par le run de test sales/inventory (50 tests OK)
+- Bloqueurs / décision attendue : aucun bloqueur connu; annulation par employé limitée à ses ventes, responsable à son activité, global à toutes les activités
+- Prochaine tâche débloquée : JED-09 — dépenses catégorisées, après validation de JED-08

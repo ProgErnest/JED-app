@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError
+from django.db.models import Exists, OuterRef
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.views.generic import ListView, DetailView, View
@@ -22,9 +23,9 @@ from apps.accounts.permissions import (
 )
 from apps.catalog.models import Product, Service
 
-from .forms import SaleLineFormSet
-from .models import Sale, SaleLine
-from .services import create_sale
+from .forms import SaleCancellationForm, SaleLineFormSet
+from .models import Sale, SaleCancellation, SaleLine
+from .services import cancel_sale, create_sale
 
 
 class SaleListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView):
@@ -36,7 +37,10 @@ class SaleListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView):
 
     def get_queryset(self):
         self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
-        queryset = Sale.objects.filter(activity=self.activity)
+        cancellations = SaleCancellation.objects.filter(sale_id=OuterRef("pk"))
+        queryset = Sale.objects.filter(activity=self.activity).annotate(
+            _is_canceled=Exists(cancellations)
+        )
         if user_is_employee_in_activity(self.request.user, self.activity):
             queryset = queryset.filter(user=self.request.user)
         return queryset.select_related("user").order_by("-created_at")
@@ -60,6 +64,95 @@ class SaleDetailView(LoginRequiredMixin, ActivityAccessRequiredMixin, DetailView
         if user_is_employee_in_activity(self.request.user, self.activity):
             queryset = queryset.filter(user=self.request.user)
         return queryset.select_related("user").prefetch_related("lines")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = self.activity
+        return context
+
+
+class SaleCancellationCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, View):
+    activity_slug_kwarg = "activity_slug"
+    template_name = "sales/sale_cancel_form.html"
+
+    def get_sale(self, request):
+        self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        self.sale = get_object_or_404(
+            Sale.objects.filter(activity=self.activity).select_related("user"),
+            pk=self.kwargs["pk"],
+        )
+        if (
+            user_is_employee_in_activity(request.user, self.activity)
+            and self.sale.user_id != request.user.pk
+        ):
+            raise PermissionDenied("Un employé ne peut annuler que ses propres ventes.")
+        return self.sale
+
+    def get(self, request, *args, **kwargs):
+        self.get_sale(request)
+        if self.sale.is_canceled:
+            return redirect("sales:sale_detail", activity_slug=self.activity.slug, pk=self.sale.pk)
+        return self.render(request, SaleCancellationForm())
+
+    def post(self, request, *args, **kwargs):
+        self.get_sale(request)
+        form = SaleCancellationForm(request.POST)
+        if form.is_valid():
+            try:
+                cancellation = cancel_sale(self.sale, request.user, form.cleaned_data["reason"])
+            except ValidationError as exc:
+                form.add_error(None, exc)
+            else:
+                messages.success(request, f"Ticket #{self.sale.pk} annulé.")
+                return redirect(
+                    "sales:sale_cancellation_detail",
+                    activity_slug=self.activity.slug,
+                    pk=cancellation.pk,
+                )
+        return self.render(request, form)
+
+    def render(self, request, form):
+        from django.template.response import TemplateResponse
+
+        return TemplateResponse(
+            request,
+            self.template_name,
+            {"activity": self.activity, "sale": self.sale, "form": form},
+        )
+
+
+class SaleCancellationListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView):
+    model = SaleCancellation
+    template_name = "sales/sale_cancellation_list.html"
+    context_object_name = "cancellations"
+    activity_slug_kwarg = "activity_slug"
+    paginate_by = 25
+
+    def get_queryset(self):
+        self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        queryset = SaleCancellation.objects.filter(sale__activity=self.activity)
+        if user_is_employee_in_activity(self.request.user, self.activity):
+            queryset = queryset.filter(user=self.request.user, sale__user=self.request.user)
+        return queryset.select_related("sale", "sale__user", "user").order_by("-created_at")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = self.activity
+        return context
+
+
+class SaleCancellationDetailView(LoginRequiredMixin, ActivityAccessRequiredMixin, DetailView):
+    model = SaleCancellation
+    template_name = "sales/sale_cancellation_detail.html"
+    context_object_name = "cancellation"
+    activity_slug_kwarg = "activity_slug"
+
+    def get_queryset(self):
+        self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        queryset = SaleCancellation.objects.filter(sale__activity=self.activity)
+        if user_is_employee_in_activity(self.request.user, self.activity):
+            queryset = queryset.filter(user=self.request.user, sale__user=self.request.user)
+        return queryset.select_related("sale", "sale__user", "user")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

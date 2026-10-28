@@ -4,6 +4,13 @@
 <h1>Ticket #{{ sale.pk }} — {{ activity.name }} — {{ sale.created_at|date:"d/m/y H:i" }}</h1>
 <p><strong>Employé :</strong> {{ sale.user.get_full_name|default:sale.user.username }}</p>
 <p><strong>Total :</strong> {{ sale.total }} €</p>
+{% if sale.is_canceled %}
+<p><strong>Statut :</strong> Annulé</p>
+<p><strong>Motif :</strong> {{ sale.cancellation.reason }}</p>
+<p><strong>Annulé par :</strong> {{ sale.cancellation.user.get_full_name|default:sale.cancellation.user.username }} le {{ sale.cancellation.created_at|date:"d/m/Y H:i" }}</p>
+{% else %}
+<p><a href="{% url 'sales:sale_cancel' activity_slug=activity.slug pk=sale.pk %}" class="btn">Annuler cette vente</a></p>
+{% endif %}
 
 <table>
     <thead>
@@ -37,4 +44,5 @@
     </tbody>
 </table>
 <p><a href="{% url 'sales:sale_list' activity_slug=activity.slug %}" class="btn btn-secondary">Retour aux tickets</a></p>
+<p><a href="{% url 'sales:sale_cancellation_list' activity_slug=activity.slug %}">Journal des annulations</a></p>
 {% endblock %}

@@ -1,0 +1,17 @@
+{% extends "catalog/base.html" %}
+
+{% block content %}
+<h1>Annuler le ticket #{{ sale.pk }} — {{ activity.name }}</h1>
+<p>Le ticket initial et ses lignes seront conservés. Les produits vendus seront réintégrés au stock avec un mouvement traçable.</p>
+<form method="post">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="form-group">
+        {{ form.reason.label_tag }}
+        {{ form.reason }}
+        {{ form.reason.errors }}
+    </div>
+    <button type="submit">Confirmer l’annulation</button>
+    <a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}" class="cancel btn btn-secondary">Retour</a>
+</form>
+{% endblock %}

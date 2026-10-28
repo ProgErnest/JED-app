@@ -11,12 +11,14 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
+from django.core.exceptions import ValidationError
 
+from apps.accounts.permissions import user_has_activity_access, user_is_employee_in_activity
 from apps.catalog.models import Product, Service
+from apps.inventory import services as inventory_services
 from apps.inventory.models import StockMovement
-from apps.inventory.services import record_stock_movement
 
-from .models import Sale, SaleLine
+from .models import Sale, SaleCancellation, SaleLine
 
 
 def create_sale(activity, user, lines_data):
@@ -63,7 +65,7 @@ def create_sale(activity, user, lines_data):
                 unit_price = item.price  # snapshot prix de vente
                 cost = item.average_cost  # snapshot coût moyen
                 # Sortie de stock centralisée (jamais directement).
-                record_stock_movement(
+                inventory_services.record_stock_movement(
                     product=item,
                     movement_type=StockMovement.MovementType.EXIT,
                     quantity=quantity,
@@ -103,3 +105,40 @@ def create_sale(activity, user, lines_data):
         sale.total = total
         sale.save(update_fields=["total"])
         return sale
+
+
+def cancel_sale(sale, user, reason):
+    """Annule un ticket une seule fois, en restaurant le stock atomiquement."""
+    reason = reason.strip() if isinstance(reason, str) else ""
+    if not reason:
+        raise ValidationError("Le motif d'annulation est obligatoire.")
+    if not user or not getattr(user, "is_authenticated", False):
+        raise ValidationError("L'auteur de l'annulation est obligatoire.")
+    if not user_has_activity_access(user, sale.activity):
+        raise ValidationError("Accès non autorisé à cette activité.")
+    if user_is_employee_in_activity(user, sale.activity) and sale.user_id != user.pk:
+        raise ValidationError("Un employé ne peut annuler que ses propres ventes.")
+
+    with transaction.atomic():
+        locked_sale = Sale.objects.select_for_update().select_related("activity").get(pk=sale.pk)
+        if SaleCancellation.objects.filter(sale=locked_sale).exists():
+            return SaleCancellation.objects.get(sale=locked_sale)
+
+        cancellation = SaleCancellation.objects.create(
+            sale=locked_sale,
+            user=user,
+            reason=reason,
+        )
+        lines = locked_sale.lines.select_related("product")
+        for line in lines:
+            if line.product_id is None:
+                continue
+            inventory_services.record_stock_movement(
+                product=line.product,
+                movement_type=StockMovement.MovementType.CORRECTION,
+                quantity=line.quantity,
+                user=user,
+                reason=f"Annulation ticket #{locked_sale.pk}: {reason}",
+                activity=locked_sale.activity,
+            )
+        return cancellation

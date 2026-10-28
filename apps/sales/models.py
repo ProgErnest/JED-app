@@ -49,8 +49,12 @@ class Sale(models.Model):
 
     @property
     def is_canceled(self) -> bool:
-        """Un ticket est annulé s'il a une entrée d'audit de type annulation (JED-08)."""
-        return getattr(self, "_is_canceled", False)
+        """Indique si un événement d'annulation existe pour ce ticket."""
+        if hasattr(self, "_is_canceled"):
+            return self._is_canceled
+        if "cancellation" in self._state.fields_cache:
+            return self._state.fields_cache["cancellation"] is not None
+        return SaleCancellation.objects.filter(sale_id=self.pk).exists()
 
 
 class SaleLine(models.Model):
@@ -138,3 +142,30 @@ class SaleLine(models.Model):
             raise ValidationError("La quantité doit être positive.")
         if self.unit_price < 0:
             raise ValidationError("Le prix de vente ne peut être négatif.")
+
+
+class SaleCancellation(models.Model):
+    """Événement d'annulation immuable associé à un ticket de caisse."""
+
+    sale = models.OneToOneField(
+        Sale,
+        on_delete=models.PROTECT,
+        related_name="cancellation",
+        verbose_name="ticket annulé",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="sale_cancellations",
+        verbose_name="auteur de l'annulation",
+    )
+    reason = models.TextField("motif")
+    created_at = models.DateTimeField("annulé le", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "annulation de vente"
+        verbose_name_plural = "annulations de vente"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Annulation du ticket #{self.sale_id}"

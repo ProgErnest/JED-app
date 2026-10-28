@@ -1,0 +1,12 @@
+{% extends "catalog/base.html" %}
+
+{% block content %}
+<h1>Annulation du ticket #{{ cancellation.sale_id }}</h1>
+<p><strong>Activité :</strong> {{ activity.name }}</p>
+<p><strong>Vente initiale :</strong> <a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=cancellation.sale_id %}">Ticket #{{ cancellation.sale_id }}</a></p>
+<p><strong>Vendeur :</strong> {{ cancellation.sale.user.get_full_name|default:cancellation.sale.user.username }}</p>
+<p><strong>Annulé par :</strong> {{ cancellation.user.get_full_name|default:cancellation.user.username }}</p>
+<p><strong>Date :</strong> {{ cancellation.created_at|date:"d/m/Y H:i" }}</p>
+<p><strong>Motif :</strong> {{ cancellation.reason }}</p>
+<p><a href="{% url 'sales:sale_cancellation_list' activity_slug=activity.slug %}" class="btn btn-secondary">Retour au journal</a></p>
+{% endblock %}

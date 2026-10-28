@@ -1,0 +1,38 @@
+{% extends "catalog/base.html" %}
+
+{% block content %}
+<h1>Annulations — {{ activity.name }}</h1>
+{% if cancellations %}
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Ticket</th>
+            <th>Vendeur</th>
+            <th>Annulé par</th>
+            <th>Motif</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for cancellation in cancellations %}
+        <tr>
+            <td>{{ cancellation.created_at|date:"d/m/Y H:i" }}</td>
+            <td><a href="{% url 'sales:sale_cancellation_detail' activity_slug=activity.slug pk=cancellation.pk %}">#{{ cancellation.sale_id }}</a></td>
+            <td>{{ cancellation.sale.user.get_full_name|default:cancellation.sale.user.username }}</td>
+            <td>{{ cancellation.user.get_full_name|default:cancellation.user.username }}</td>
+            <td>{{ cancellation.reason }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Aucune annulation pour cette activité.</p>
+{% endif %}
+{% if is_paginated %}
+<div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Précédent</a>{% endif %}
+    Page {{ page_obj.number }} sur {{ paginator.num_pages }}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Suivant</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

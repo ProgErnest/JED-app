@@ -90,3 +90,17 @@ SaleLineFormSet = forms.inlineformset_factory(
     can_delete=False,
     fields=["product", "service", "quantity"],
 )
+
+
+class SaleCancellationForm(forms.Form):
+    reason = forms.CharField(
+        label="Motif de l'annulation",
+        widget=forms.Textarea(attrs={"rows": 3}),
+        strip=True,
+    )
+
+    def clean_reason(self):
+        reason = self.cleaned_data["reason"].strip()
+        if not reason:
+            raise forms.ValidationError("Le motif d'annulation est obligatoire.")
+        return reason

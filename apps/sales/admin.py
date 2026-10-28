@@ -4,7 +4,7 @@ from django.contrib import admin
 
 from apps.accounts.permissions import user_is_global
 
-from .models import Sale, SaleLine
+from .models import Sale, SaleCancellation, SaleLine
 
 
 class SaleLineInline(admin.TabularInline):
@@ -59,6 +59,26 @@ class SaleLineAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(SaleCancellation)
+class SaleCancellationAdmin(admin.ModelAdmin):
+    list_display = ("sale", "user", "created_at", "reason")
+    list_filter = ("sale__activity", "created_at")
+    search_fields = ("sale__id", "reason", "user__username")
+    readonly_fields = ("sale", "user", "reason", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return user_is_global(request.user) and request.user.has_perm("sales.view_salecancellation")
 
     def has_delete_permission(self, request, obj=None):
         return False
