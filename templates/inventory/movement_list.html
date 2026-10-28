@@ -4,6 +4,7 @@
 <h1>Mouvements de stock — {{ activity.name }}</h1>
 <p>
     <a href="{% url 'inventory:movement_entry_add' activity_slug=activity.slug %}" class="btn">+ Entrée de stock</a>
+    <a href="{% url 'inventory:movement_correction_add' activity_slug=activity.slug %}" class="btn">+ Correction de stock</a>
 </p>
 {% if movements %}
 <table>

@@ -74,6 +74,10 @@ def record_stock_movement(product, movement_type, quantity, unit_cost=None, user
         raise ValidationError("Le coût unitaire ne s'applique qu'aux entrées de stock.")
     if movement_type in (movement_types.EXIT, movement_types.CORRECTION) and quantity == 0:
         raise ValidationError("Le mouvement doit modifier le stock.")
+    if movement_type == movement_types.CORRECTION and (
+        not isinstance(reason, str) or not reason.strip()
+    ):
+        raise ValidationError("Le motif est obligatoire pour une correction.")
 
     with transaction.atomic():
         Product = apps.get_model("catalog", "Product")

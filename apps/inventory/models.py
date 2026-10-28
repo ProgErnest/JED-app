@@ -25,7 +25,7 @@ class StockMovement(models.Model):
 
     product = models.ForeignKey(
         "catalog.Product",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="stock_movements",
         verbose_name="produit",
     )
@@ -47,7 +47,7 @@ class StockMovement(models.Model):
     )
     activity = models.ForeignKey(
         "activities.Activity",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="stock_movements",
         verbose_name="activité",
     )

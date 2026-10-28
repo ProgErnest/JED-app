@@ -13,6 +13,7 @@ class ProductAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("activity__name", "name")
     raw_id_fields = ("activity",)
+    readonly_fields = ("stock_quantity", "average_cost")
 
 
 @admin.register(Service)

@@ -119,6 +119,19 @@ class RecordStockMovementTests(TestCase):
                     )
                 )
 
+    def test_rejects_correction_without_nonblank_reason(self):
+        for reason in ("", "   ", None):
+            with self.subTest(reason=reason):
+                self.assert_rejected_without_changes(
+                    lambda: record_stock_movement(
+                        product=self.product,
+                        movement_type=StockMovement.MovementType.CORRECTION,
+                        quantity=-1,
+                        user=self.user,
+                        reason=reason,
+                    )
+                )
+
     def test_failure_to_create_movement_rolls_back_product_update(self):
         with patch(
             "apps.inventory.services.StockMovement.objects.create",
