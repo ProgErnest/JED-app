@@ -24,7 +24,9 @@
             <td class="text-end">{{ line.unit_price }} €</td>
             <td class="text-end">{{ line.cost }} €</td>
             <td class="text-end">{{ line.total }} €</td>
-            <td class="text-end">{{ line.margin }} €</td>
+            <td class="text-end">
+                {% if line.margin_reliable %}{{ line.margin }} €{% else %}Non fiable{% endif %}
+            </td>
         </tr>
         {% endfor %}
         <tr>

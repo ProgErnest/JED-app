@@ -58,6 +58,8 @@ def create_sale(activity, user, lines_data):
                 raise ValueError("La quantité d'une ligne doit être positive.")
 
             if isinstance(item, Product):
+                if item.activity_id != activity.pk:
+                    raise ValueError("Le produit doit appartenir à l'activité de la vente.")
                 unit_price = item.price  # snapshot prix de vente
                 cost = item.average_cost  # snapshot coût moyen
                 # Sortie de stock centralisée (jamais directement).
@@ -71,9 +73,13 @@ def create_sale(activity, user, lines_data):
                 )
                 product = item
                 service = None
+                margin_reliable = item.stock_quantity > 0
             elif isinstance(item, Service):
+                if item.activity_id != activity.pk:
+                    raise ValueError("La prestation doit appartenir à l'activité de la vente.")
                 unit_price = item.price
                 cost = Decimal(0)  # prestation : pas de stock, pas de coût
+                margin_reliable = True
                 product = None
                 service = item
             else:
@@ -89,6 +95,7 @@ def create_sale(activity, user, lines_data):
                 quantity=quantity,
                 unit_price=unit_price,
                 cost=cost,
+                margin_reliable=margin_reliable,
                 total=line_total,
             )
             total += line_total

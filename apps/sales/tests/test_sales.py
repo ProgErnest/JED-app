@@ -1,0 +1,460 @@
+"""
+Tests persistants JED-07 — module des ventes.
+
+Couvre :
+- ``create_sale`` (service central) : snapshots prix/coût, mouvements stock,
+  rollback transactionnel, services (coût = 0), stock négatif.
+- ``SaleLineForm`` / ``SaleLineFormSet`` : validation, lignes vides,
+  produits+services simultanés, quantité.
+- Vues (``SaleListView``, ``SaleCreateView``, ``SaleDetailView``) : flux web,
+  permissions par activité (403 / 302), formulaire vide.
+- ``SaleLine.margin`` (calcul de marge).
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.test import TestCase
+from django.urls import reverse
+
+from apps.activities.models import Activity
+from apps.accounts.models import ActivityMembership, Role
+from apps.catalog.models import Product, Service
+from apps.inventory.models import StockMovement
+
+from ..models import Sale, SaleLine
+from ..forms import SaleLineForm, SaleLineFormSet
+from ..services import create_sale
+
+
+class SaleModelTest(TestCase):
+    def setUp(self):
+        self.activity = Activity.objects.create(name="Restaurant Test", slug="resto-test")
+        self.user = User.objects.create_user("vendeur1", password="t123")
+        ActivityMembership.objects.create(
+            user=self.user, activity=self.activity, role=Role.MANAGER, is_active=True
+        )
+        self.product = Product.objects.create(
+            activity=self.activity, name="Bière", slug="biere-t", unit="pièce",
+            price=Decimal("2.50"), stock_quantity=100, average_cost=Decimal("1.00"),
+        )
+
+    def test_sale_str(self):
+        sale = Sale.objects.create(activity=self.activity, user=self.user, total=Decimal("7.50"))
+        self.assertIn(f"Ticket #{sale.pk}", str(sale))
+
+    def test_sale_line_item_property_returns_product(self):
+        sale = Sale.objects.create(activity=self.activity, user=self.user)
+        line = SaleLine.objects.create(
+            sale=sale, product=self.product, quantity=3,
+            unit_price=Decimal("2.50"), cost=Decimal("1.00"), total=Decimal("7.50"),
+        )
+        self.assertEqual(line.item, self.product)
+
+    def test_sale_line_item_property_returns_service(self):
+        service = Service.objects.create(
+            activity=self.activity, name="Cours", slug="cours-t", price=Decimal("30.00"),
+        )
+        sale = Sale.objects.create(activity=self.activity, user=self.user)
+        line = SaleLine.objects.create(
+            sale=sale, service=service, quantity=1,
+            unit_price=Decimal("30.00"), cost=Decimal("0"), total=Decimal("30.00"),
+        )
+        self.assertEqual(line.item, service)
+
+    def test_sale_line_margin(self):
+        sale = Sale.objects.create(activity=self.activity, user=self.user)
+        line = SaleLine.objects.create(
+            sale=sale, product=self.product, quantity=3,
+            unit_price=Decimal("2.50"), cost=Decimal("1.00"), total=Decimal("7.50"),
+        )
+        self.assertEqual(line.margin, Decimal("4.50"))
+
+    def test_sale_line_clean_requires_product_or_service(self):
+        sale = Sale.objects.create(activity=self.activity, user=self.user)
+        line = SaleLine(sale=sale, quantity=1, unit_price=Decimal("2.50"))
+        with self.assertRaises(ValidationError):
+            line.full_clean()
+
+    def test_sale_line_clean_rejects_both(self):
+        service = Service.objects.create(
+            activity=self.activity, name="S", slug="s-t", price=Decimal("10.00"),
+        )
+        sale = Sale.objects.create(activity=self.activity, user=self.user)
+        line = SaleLine(sale=sale, product=self.product, service=service, quantity=1)
+        with self.assertRaises(ValidationError):
+            line.full_clean()
+
+
+class CreateSaleServiceTest(TestCase):
+    def setUp(self):
+        self.activity = Activity.objects.create(name="Restaurant Test", slug="resto-test")
+        self.user = User.objects.create_user("vendeur1", password="t123")
+        ActivityMembership.objects.create(
+            user=self.user, activity=self.activity, role=Role.MANAGER, is_active=True
+        )
+        self.product = Product.objects.create(
+            activity=self.activity, name="Bière", slug="biere-t", unit="pièce",
+            price=Decimal("2.50"), stock_quantity=100, average_cost=Decimal("1.00"),
+        )
+        self.service = Service.objects.create(
+            activity=self.activity, name="Cours cuisine", slug="cours-t", price=Decimal("30.00")
+        )
+
+    def test_create_sale_product_decrements_stock(self):
+        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 3}])
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 97)
+        self.assertEqual(sale.total, Decimal("7.50"))
+        self.assertEqual(sale.lines.first().unit_price, Decimal("2.50"))
+        self.assertEqual(sale.lines.first().cost, Decimal("1.00"))
+        self.assertTrue(sale.lines.first().margin_reliable)
+        self.assertEqual(StockMovement.objects.filter(movement_type="EXIT").count(), 1)
+
+    def test_create_sale_service_has_no_stock_movement(self):
+        sale = create_sale(self.activity, self.user, [{"item": self.service, "quantity": 1}])
+        self.assertEqual(sale.lines.first().cost, Decimal("0"))
+        self.assertEqual(StockMovement.objects.filter(movement_type="EXIT").count(), 0)
+        self.assertEqual(sale.total, Decimal("30.00"))
+
+    def test_create_sale_mixed_lines(self):
+        sale = create_sale(self.activity, self.user, [
+            {"item": self.product, "quantity": 1},
+            {"item": self.service, "quantity": 1},
+            {"item": self.product, "quantity": 1},
+        ])
+        self.assertEqual(sale.total, Decimal("35.00"))
+        self.assertEqual(sale.lines.count(), 3)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 98)
+
+    def test_create_sale_empty_lines_raises(self):
+        with self.assertRaises(ValueError):
+            create_sale(self.activity, self.user, [])
+
+    def test_create_sale_invalid_item_raises(self):
+        with self.assertRaises(ValueError):
+            create_sale(self.activity, self.user, [{"item": "bad", "quantity": 1}])
+
+    def test_create_sale_negative_quantity_raises(self):
+        with self.assertRaises(ValueError):
+            create_sale(self.activity, self.user, [{"item": self.product, "quantity": -1}])
+
+    def test_create_sale_allows_negative_stock(self):
+        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 150}])
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, -50)
+        self.assertFalse(sale.lines.first().margin_reliable)
+        self.assertTrue(sale.pk)
+
+    def test_create_sale_marking_stock_zero_has_unreliable_margin(self):
+        self.product.stock_quantity = 1
+        self.product.save(update_fields=["stock_quantity"])
+
+        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 1}])
+
+        self.assertFalse(sale.lines.first().margin_reliable)
+
+    def test_create_sale_rejects_item_from_another_activity(self):
+        other_activity = Activity.objects.create(name="Salon", slug="salon-other")
+        other_product = Product.objects.create(
+            activity=other_activity,
+            name="Shampoo",
+            slug="shampoo-other",
+            unit="bottle",
+            price=Decimal("8.00"),
+            stock_quantity=5,
+            average_cost=Decimal("3.00"),
+        )
+        other_service = Service.objects.create(
+            activity=other_activity,
+            name="Coupe",
+            slug="coupe-other",
+            price=Decimal("20.00"),
+        )
+
+        for item in (other_product, other_service):
+            with self.subTest(item=item):
+                with self.assertRaisesRegex(ValueError, "appartenir"):
+                    create_sale(self.activity, self.user, [{"item": item, "quantity": 1}])
+
+        other_product.refresh_from_db()
+        self.assertEqual(other_product.stock_quantity, 5)
+        self.assertEqual(Sale.objects.count(), 0)
+
+    def test_create_sale_price_change_does_not_affect_existing(self):
+        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 3}])
+        self.product.price = Decimal("4.00")
+        self.product.save()
+        sale.refresh_from_db()
+        self.assertEqual(sale.lines.first().unit_price, Decimal("2.50"))
+
+    def test_create_sale_rollback_on_error(self):
+        before = Sale.objects.count()
+        with self.assertRaises(ValueError):
+            create_sale(self.activity, self.user, [
+                {"item": self.product, "quantity": 1},
+                {"item": "bad", "quantity": 1},
+            ])
+        self.assertEqual(Sale.objects.count(), before)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 100)
+
+
+class SaleLineFormTest(TestCase):
+    def setUp(self):
+        self.activity = Activity.objects.create(name="Restaurant Test", slug="resto-test")
+        self.product = Product.objects.create(
+            activity=self.activity, name="Bière", slug="biere-t", unit="pièce",
+            price=Decimal("2.50"), stock_quantity=100, average_cost=Decimal("1.00"),
+        )
+        self.service = Service.objects.create(
+            activity=self.activity, name="Cours", slug="cours-t", price=Decimal("30.00")
+        )
+
+    def test_form_accepts_product(self):
+        form = SaleLineForm(
+            data={"product": self.product.pk, "service": "", "quantity": 2},
+            activity=self.activity
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_form_accepts_service(self):
+        form = SaleLineForm(
+            data={"product": "", "service": self.service.pk, "quantity": 1},
+            activity=self.activity
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_form_rejects_both(self):
+        form = SaleLineForm(
+            data={"product": self.product.pk, "service": self.service.pk, "quantity": 1},
+            activity=self.activity
+        )
+        self.assertFalse(form.is_valid())
+
+    def test_formset_requires_at_least_one_line(self):
+        formset = SaleLineFormSet(
+            data={
+                "form-TOTAL_FORMS": "3",
+                "form-INITIAL_FORMS": "0",
+                "form-0-product": "", "form-0-service": "", "form-0-quantity": "1",
+                "form-1-product": "", "form-1-service": "", "form-1-quantity": "1",
+                "form-2-product": "", "form-2-service": "", "form-2-quantity": "1",
+            },
+            form_kwargs={"activity": self.activity},
+            prefix="form",
+        )
+        self.assertFalse(formset.is_valid())
+        self.assertTrue(formset.non_form_errors())
+        self.assertIn("au moins un", str(formset.non_form_errors()))
+
+    def test_formset_accepts_valid_lines(self):
+        formset = SaleLineFormSet(
+            data={
+                "form-TOTAL_FORMS": "2",
+                "form-INITIAL_FORMS": "0",
+                "form-0-product": str(self.product.pk),
+                "form-0-service": "",
+                "form-0-quantity": "2",
+                "form-1-product": "",
+                "form-1-service": str(self.service.pk),
+                "form-1-quantity": "1",
+            },
+            form_kwargs={"activity": self.activity},
+            prefix="form",
+        )
+        self.assertTrue(formset.is_valid(), formset.errors)
+
+
+class SaleViewsTest(TestCase):
+    def setUp(self):
+        self.activity = Activity.objects.create(name="Restaurant Test", slug="resto-test")
+        self.other_activity = Activity.objects.create(name="Coiffure Test", slug="coiffure-test")
+        self.global_user = User.objects.create_user("global1", password="t123")
+        ActivityMembership.objects.create(
+            user=self.global_user, activity=None, role=Role.GLOBAL, is_active=True
+        )
+        self.manager = User.objects.create_user("mgr1", password="t123")
+        ActivityMembership.objects.create(
+            user=self.manager, activity=self.activity, role=Role.MANAGER, is_active=True
+        )
+        self.employee = User.objects.create_user("emp1", password="t123")
+        ActivityMembership.objects.create(
+            user=self.employee, activity=self.activity, role=Role.EMPLOYEE, is_active=True
+        )
+        self.outsider_employee = User.objects.create_user("emp2", password="t123")
+        ActivityMembership.objects.create(
+            user=self.outsider_employee, activity=self.other_activity, role=Role.EMPLOYEE, is_active=True
+        )
+        self.product = Product.objects.create(
+            activity=self.activity, name="Bière", slug="biere-t", unit="pièce",
+            price=Decimal("2.50"), stock_quantity=100, average_cost=Decimal("1.00"),
+        )
+        self.service = Service.objects.create(
+            activity=self.activity, name="Cours", slug="cours-t", price=Decimal("30.00")
+        )
+
+    def _post_data(self, product=None, service=None, qty=1):
+        data = {"form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0"}
+        pid = str(product.pk) if product else ""
+        sid = str(service.pk) if service else ""
+        data.update({
+            "form-0-product": pid, "form-0-service": sid, "form-0-quantity": str(qty)
+        })
+        return data
+
+    def test_global_user_can_access_views(self):
+        self.client.force_login(self.global_user)
+        url = reverse("sales:sale_list", kwargs={"activity_slug": self.activity.slug})
+        self.assertEqual(self.client.get(url).status_code, 200)
+        add_url = reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug})
+        self.assertEqual(self.client.get(add_url).status_code, 200)
+
+    def test_global_user_can_create_sale(self):
+        self.client.force_login(self.global_user)
+        add_url = reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug})
+        r = self.client.post(add_url, self._post_data(product=self.product, qty=2))
+        self.assertEqual(r.status_code, 302)
+        sale = Sale.objects.get()
+        self.assertEqual(sale.total, Decimal("5.00"))
+        self.assertEqual(sale.user, self.global_user)
+        expected = reverse("sales:sale_detail",
+                           kwargs={"activity_slug": self.activity.slug, "pk": sale.pk})
+        self.assertEqual(r.url, expected)
+
+    def test_employee_cannot_access_other_activity(self):
+        self.client.force_login(self.outsider_employee)
+        add_url = reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug})
+        self.assertEqual(self.client.get(add_url).status_code, 403)
+        list_url = reverse("sales:sale_list", kwargs={"activity_slug": self.activity.slug})
+        self.assertEqual(self.client.get(list_url).status_code, 403)
+
+    def test_employee_can_create_sale_on_own_activity(self):
+        self.client.force_login(self.employee)
+        add_url = reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug})
+        r = self.client.post(add_url, self._post_data(service=self.service, qty=1))
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(Sale.objects.count(), 1)
+
+    def test_employee_sale_list_only_contains_own_sales(self):
+        create_sale(self.activity, self.global_user, [
+            {"item": self.product, "quantity": 1}
+        ])
+        own_sale = create_sale(self.activity, self.employee, [
+            {"item": self.service, "quantity": 1}
+        ])
+        self.client.force_login(self.employee)
+
+        response = self.client.get(
+            reverse("sales:sale_list", kwargs={"activity_slug": self.activity.slug})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["sales"]), [own_sale])
+
+    def test_manager_sale_list_includes_employees_sales(self):
+        sale = create_sale(self.activity, self.employee, [
+            {"item": self.service, "quantity": 1}
+        ])
+        self.client.force_login(self.manager)
+
+        response = self.client.get(
+            reverse("sales:sale_list", kwargs={"activity_slug": self.activity.slug})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["sales"]), [sale])
+
+    def test_employee_cannot_open_colleague_sale_in_same_activity(self):
+        sale = create_sale(self.activity, self.global_user, [
+            {"item": self.product, "quantity": 1}
+        ])
+        self.client.force_login(self.employee)
+
+        response = self.client.get(
+            reverse(
+                "sales:sale_detail",
+                kwargs={"activity_slug": self.activity.slug, "pk": sale.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_superuser_has_global_activity_access(self):
+        superuser = User.objects.create_superuser(
+            "root", email="root@example.test", password="t123"
+        )
+        self.client.force_login(superuser)
+
+        response = self.client.get(
+            reverse("sales:sale_list", kwargs={"activity_slug": self.other_activity.slug})
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_superuser_can_manage_any_activity(self):
+        superuser = User.objects.create_superuser(
+            "root", email="root@example.test", password="t123"
+        )
+        self.client.force_login(superuser)
+
+        response = self.client.get(
+            reverse("accounts:activity_manage", kwargs={"activity_slug": self.other_activity.slug})
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_empty_formset_returns_200_with_message(self):
+        self.client.force_login(self.manager)
+        add_url = reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug})
+        r = self.client.post(add_url, {
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-0-product": "", "form-0-service": "", "form-0-quantity": "1",
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "au moins", status_code=200)
+        self.assertEqual(Sale.objects.count(), 0)
+
+    def test_detail_view(self):
+        sale = create_sale(self.activity, self.global_user, [
+            {"item": self.product, "quantity": 2}
+        ])
+        self.client.force_login(self.global_user)
+        detail_url = reverse("sales:sale_detail",
+                             kwargs={"activity_slug": self.activity.slug, "pk": sale.pk})
+        r = self.client.get(detail_url)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "5,00 €")
+        self.assertContains(r, "3,00 €")
+
+    def test_detail_view_labels_margin_unreliable_at_negative_stock(self):
+        self.product.stock_quantity = 0
+        self.product.save(update_fields=["stock_quantity"])
+        sale = create_sale(self.activity, self.global_user, [
+            {"item": self.product, "quantity": 1}
+        ])
+        self.client.force_login(self.global_user)
+
+        response = self.client.get(
+            reverse("sales:sale_detail", kwargs={"activity_slug": self.activity.slug, "pk": sale.pk})
+        )
+
+        self.assertContains(response, "Non fiable")
+        self.assertNotContains(response, "1,50 €")
+
+    def test_detail_view_403_for_other_activity_employee(self):
+        sale = create_sale(self.activity, self.global_user, [
+            {"item": self.product, "quantity": 1}
+        ])
+        self.client.force_login(self.outsider_employee)
+        detail_url = reverse("sales:sale_detail",
+                             kwargs={"activity_slug": self.activity.slug, "pk": sale.pk})
+        self.assertEqual(self.client.get(detail_url).status_code, 403)
+
+
+
+

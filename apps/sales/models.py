@@ -90,6 +90,11 @@ class SaleLine(models.Model):
         default=Decimal(0),
         help_text="Coût moyen du produit au moment de la vente, ou 0 pour un service.",
     )
+    margin_reliable = models.BooleanField(
+        "marge fiable",
+        default=False,
+        help_text="La marge est non fiable si le stock était nul ou négatif; faux pour les ventes historiques non vérifiables.",
+    )
     total = models.DecimalField(
         "total ligne", max_digits=10, decimal_places=2, default=Decimal(0)
     )
