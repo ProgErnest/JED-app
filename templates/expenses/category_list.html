@@ -1,0 +1,25 @@
+{% extends "catalog/base.html" %}
+
+{% block title %}Catégories de dépenses{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1>Catégories de dépenses</h1>
+  <div class="card shadow-sm">
+    <div class="card-body">
+      {% if categories %}
+        <ul class="list-group">
+          {% for category in categories %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              {{ category.name }}
+              <span class="badge bg-secondary">{{ category.expenses.count }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="mb-0 text-muted">Aucune catégorie pour cette activité.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

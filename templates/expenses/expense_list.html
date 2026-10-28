@@ -1,0 +1,57 @@
+{% extends "catalog/base.html" %}
+
+{% block title %}Dépenses{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Dépenses</h1>
+    <a href="{% url 'expenses:expense-create' %}?activity={{ activity.slug }}" class="btn btn-primary">Nouvelle dépense</a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-success">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      {% if expenses %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle">
+            <thead>
+              <tr>
+                <th>Catégorie</th>
+                <th>Montant</th>
+                <th>Créée par</th>
+                <th>Statut</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for expense in expenses %}
+                <tr>
+                  <td>{{ expense.category.name }}</td>
+                  <td>{{ expense.amount }} €</td>
+                  <td>{{ expense.user.username }}</td>
+                  <td>{% if expense.is_canceled %}Annulée{% else %}Active{% endif %}</td>
+                  <td class="text-end">
+                    <a href="{% url 'expenses:expense-detail' expense.pk %}?activity={{ activity.slug }}" class="btn btn-sm btn-outline-secondary">Voir</a>
+                    {% if not expense.is_canceled %}
+                      <a href="{% url 'expenses:expense-edit' expense.pk %}?activity={{ activity.slug }}" class="btn btn-sm btn-outline-primary">Corriger</a>
+                      <a href="{% url 'expenses:expense-cancel' expense.pk %}?activity={{ activity.slug }}" class="btn btn-sm btn-outline-danger">Annuler</a>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="mb-0 text-muted">Aucune dépense enregistrée pour cette activité.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

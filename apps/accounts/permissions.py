@@ -203,3 +203,36 @@ class ActivityAccessRequiredMixin:
             raise PermissionDenied("Accès non autorisé à cette activité.")
 
         return super().dispatch(request, *args, **kwargs)
+
+
+class UserCanAccessActivityMixin:
+    """Mixin de base pour les vues filtrant sur une activité donnée.
+
+    Accepte un slug d'activité dans l'URL ou dans le paramètre HTTP ``activity``.
+    """
+
+    activity_slug_kwarg = "activity_slug"
+
+    def get_activity_from_request(self):
+        activity_slug = self.kwargs.get(self.activity_slug_kwarg)
+        if not activity_slug:
+            activity_slug = self.request.GET.get("activity")
+        if not activity_slug:
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied("Aucune activité spécifiée.")
+
+        from apps.activities.models import Activity
+
+        activity = Activity.objects.filter(slug=activity_slug).first()
+        if activity is None:
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied("Activité introuvable.")
+
+        if not user_has_activity_access(self.request.user, activity):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied("Accès non autorisé à cette activité.")
+
+        return activity
