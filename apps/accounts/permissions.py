@@ -39,7 +39,7 @@ def get_accessible_activities(user):
         return Activity.objects.none()
 
     memberships = get_user_memberships(user)
-    if memberships.filter(role=Role.GLOBAL).exists():
+    if user.is_superuser or memberships.filter(role=Role.GLOBAL).exists():
         return Activity.objects.all()
 
     return Activity.objects.filter(
@@ -75,6 +75,8 @@ def user_has_activity_access(user, activity) -> bool:
 
 def user_is_global(user) -> bool:
     """Vérifie si l'utilisateur possède un rôle GLOBAL actif."""
+    if user and user.is_authenticated and user.is_superuser:
+        return True
     return get_user_memberships(user).filter(role=Role.GLOBAL).exists()
 
 
@@ -87,11 +89,23 @@ def user_can_manage_team(user, activity) -> bool:
         return False
     if activity is None:
         return False
+    if user.is_superuser:
+        return True
     # Un GLOBAL peut gérer toute activité, quelle qu'elle soit.
     if get_user_memberships(user).filter(role=Role.GLOBAL).exists():
         return True
     membership = get_user_memberships(user).filter(activity=activity).first()
     return membership is not None and membership.role in (Role.GLOBAL, Role.MANAGER)
+
+
+def user_is_employee_in_activity(user, activity) -> bool:
+    """Vérifie si l'utilisateur est employé dans l'activité indiquée."""
+    if not user or not user.is_authenticated or user_is_global(user):
+        return False
+    return get_user_memberships(user).filter(
+        activity=activity,
+        role=Role.EMPLOYEE,
+    ).exists()
 
 
 # --------------------------------------------------------------------------- #

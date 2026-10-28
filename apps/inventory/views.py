@@ -13,7 +13,10 @@ from django.views import View
 from django.views.generic import CreateView, ListView
 
 from apps.activities.models import Activity
-from apps.accounts.permissions import ActivityAccessRequiredMixin
+from apps.accounts.permissions import (
+    ActivityAccessRequiredMixin,
+    user_is_employee_in_activity,
+)
 from .forms import StockCorrectionForm, StockEntryForm
 from .models import StockMovement
 from .services import record_stock_movement
@@ -28,11 +31,10 @@ class StockMovementListView(LoginRequiredMixin, ActivityAccessRequiredMixin, Lis
 
     def get_queryset(self):
         self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
-        return (
-            StockMovement.objects.filter(activity=self.activity)
-            .select_related("product", "user")
-            .order_by("-created_at")
-        )
+        queryset = StockMovement.objects.filter(activity=self.activity)
+        if user_is_employee_in_activity(self.request.user, self.activity):
+            queryset = queryset.filter(user=self.request.user)
+        return queryset.select_related("product", "user").order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

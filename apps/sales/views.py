@@ -16,7 +16,10 @@ from django.urls import reverse
 from django.views.generic import ListView, DetailView, View
 
 from apps.activities.models import Activity
-from apps.accounts.permissions import ActivityAccessRequiredMixin
+from apps.accounts.permissions import (
+    ActivityAccessRequiredMixin,
+    user_is_employee_in_activity,
+)
 from apps.catalog.models import Product, Service
 
 from .forms import SaleLineFormSet
@@ -33,11 +36,10 @@ class SaleListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView):
 
     def get_queryset(self):
         self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
-        return (
-            Sale.objects.filter(activity=self.activity)
-            .select_related("user")
-            .order_by("-created_at")
-        )
+        queryset = Sale.objects.filter(activity=self.activity)
+        if user_is_employee_in_activity(self.request.user, self.activity):
+            queryset = queryset.filter(user=self.request.user)
+        return queryset.select_related("user").order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -54,9 +56,10 @@ class SaleDetailView(LoginRequiredMixin, ActivityAccessRequiredMixin, DetailView
 
     def get_queryset(self):
         self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
-        return Sale.objects.filter(activity=self.activity).select_related("user").prefetch_related(
-            "lines"
-        )
+        queryset = Sale.objects.filter(activity=self.activity)
+        if user_is_employee_in_activity(self.request.user, self.activity):
+            queryset = queryset.filter(user=self.request.user)
+        return queryset.select_related("user").prefetch_related("lines")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
