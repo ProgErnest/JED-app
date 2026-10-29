@@ -1,0 +1,44 @@
+{% extends "catalog/base.html" %}
+
+{% block title %}Indicateurs globaux{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1>Indicateurs par activité</h1>
+  <form method="get" class="row g-2 align-items-end mb-4">
+    <div class="col-12 col-sm-auto">
+      <label class="form-label" for="start">Du</label>
+      <input class="form-control" type="date" id="start" name="start" value="{{ start_date|date:'Y-m-d' }}" required>
+    </div>
+    <div class="col-12 col-sm-auto">
+      <label class="form-label" for="end">Au</label>
+      <input class="form-control" type="date" id="end" name="end" value="{{ end_date|date:'Y-m-d' }}" required>
+    </div>
+    <div class="col-12 col-sm-auto"><button class="btn btn-primary" type="submit">Appliquer</button></div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <thead><tr><th>Activité</th><th>Ventes</th><th>Tickets</th><th>Dépenses déclarées</th><th>Marge brute estimée</th><th>Solde après dépenses</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <th scope="row"><a href="{% url 'analytics:activity-dashboard' row.activity.slug %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.activity.name }}</a></th>
+            <td>{{ row.revenue|floatformat:2 }} €</td>
+            <td>{{ row.sale_count }}</td>
+            <td>{{ row.expenses|floatformat:2 }} € ({{ row.expense_count }})</td>
+            <td>{{ row.estimated_margin|floatformat:2 }} €</td>
+            <td>{{ row.reported_balance|floatformat:2 }} €</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="text-muted">Aucune activité active.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if rows %}
+      <tfoot><tr class="fw-bold"><th>Total</th><td>{{ totals.revenue|floatformat:2 }} €</td><td>—</td><td>{{ totals.expenses|floatformat:2 }} €</td><td>{{ totals.estimated_margin|floatformat:2 }} €</td><td>{{ totals.reported_balance|floatformat:2 }} €</td></tr></tfoot>
+      {% endif %}
+    </table>
+  </div>
+  <p class="small text-muted">Marge brute estimée à partir des lignes fiables. Le solde compare les ventes et les dépenses déclarées et ne constitue pas un bénéfice net comptable.</p>
+</div>
+{% endblock %}

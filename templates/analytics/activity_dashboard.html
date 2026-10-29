@@ -1,0 +1,45 @@
+{% extends "catalog/base.html" %}
+
+{% block title %}Indicateurs · {{ activity.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+      <h1>Indicateurs · {{ activity.name }}</h1>
+      {% if metrics.employee_scope %}<p class="text-muted mb-0">Vos opérations uniquement</p>{% endif %}
+    </div>
+    {% if activities|length > 1 %}
+      <nav aria-label="Activités">
+        {% for accessible_activity in activities %}
+          <a class="btn btn-sm {% if accessible_activity.pk == activity.pk %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{% url 'analytics:activity-dashboard' accessible_activity.slug %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ accessible_activity.name }}</a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+  </header>
+
+  <form method="get" class="row g-2 align-items-end mb-4">
+    <div class="col-12 col-sm-auto">
+      <label class="form-label" for="start">Du</label>
+      <input class="form-control" type="date" id="start" name="start" value="{{ start_date|date:'Y-m-d' }}" required>
+    </div>
+    <div class="col-12 col-sm-auto">
+      <label class="form-label" for="end">Au</label>
+      <input class="form-control" type="date" id="end" name="end" value="{{ end_date|date:'Y-m-d' }}" required>
+    </div>
+    <div class="col-12 col-sm-auto"><button class="btn btn-primary" type="submit">Appliquer</button></div>
+  </form>
+
+  <dl class="row g-3">
+    <div class="col-12 col-sm-6 col-xl-3"><div class="border rounded p-3 h-100"><dt>Ventes encaissées</dt><dd class="h3 mb-1">{{ metrics.revenue|floatformat:2 }} €</dd><small>{{ metrics.sale_count }} tickets non annulés</small></div></div>
+    <div class="col-12 col-sm-6 col-xl-3"><div class="border rounded p-3 h-100"><dt>Dépenses déclarées</dt><dd class="h3 mb-1">{{ metrics.expenses|floatformat:2 }} €</dd><small>{{ metrics.expense_count }} dépenses actives</small></div></div>
+    <div class="col-12 col-sm-6 col-xl-3"><div class="border rounded p-3 h-100"><dt>Marge brute estimée</dt><dd class="h3 mb-1">{{ metrics.estimated_margin|floatformat:2 }} €</dd><small>{{ metrics.reliable_margin_line_count }} lignes fiables</small></div></div>
+    <div class="col-12 col-sm-6 col-xl-3"><div class="border rounded p-3 h-100"><dt>Solde après dépenses déclarées</dt><dd class="h3 mb-1">{{ metrics.reported_balance|floatformat:2 }} €</dd><small>Ce n'est pas un bénéfice net comptable.</small></div></div>
+  </dl>
+
+  {% if metrics.unreliable_line_count %}
+    <div class="alert alert-warning mt-3" role="status">La marge estimée exclut {{ metrics.unreliable_line_count }} ligne(s) dont le coût n'est pas fiable.</div>
+  {% endif %}
+  <p class="small text-muted mt-3">La marge est une estimation basée sur les coûts enregistrés. Le solde compare les ventes et les dépenses déclarées uniquement, sans représenter un bénéfice net comptable.</p>
+</div>
+{% endblock %}

@@ -6,7 +6,7 @@ Mettre à jour ce fichier après la revue de chaque tâche. Une tâche n'est « 
 
 - **Terminé** : workflow initial et intégration des décisions métier A2–A8 dans le registre et le document de conception ; JED-01 — socle Django et configuration; JED-05 — approvisionnements et coût moyen; JED-06 P0 — corrections traçables de stock; JED-07 — ventes et lignes historiques; JED-08 — annulations de vente et journal d'audit métier; JED-09 — dépenses catégorisées, corrections et annulations auditées.
 - **Reporté** : JED-06 P1 — inventaire physique hebdomadaire, à réaliser après stabilisation des flux P0.
-- **Prochaine tâche** : JED-10 — indicateurs et tableaux de bord essentiels.
+- **Prochaine tâche** : revue et commit JED-10 — indicateurs et tableaux de bord essentiels.
 - **Décisions en attente** : aucune parmi A2 à A8; voir [DECISIONS.md](DECISIONS.md).
 - **Problèmes connus** : date cible du 3 novembre 2026 très serrée; les deux réserves de déploiement JED-01 (chargement du fichier `.env` et dépendance Gunicorn) restent à traiter.
 
@@ -25,12 +25,13 @@ Mettre à jour ce fichier après la revue de chaque tâche. Une tâche n'est « 
 | 2026-10-28 | JED-06 — validation et commit P0 | JED-06 P0 validée; correctifs et migration de protection des mouvements commités. | `b4be97a` |
 | 2026-10-28 | JED-07 — ventes et lignes historiques | Vente groupée produits/prestations, snapshots prix/coût, mouvements atomiques, permissions et correctifs d'intégrité/marge; 39 tests sales OK; checks Django, migrations et diff propres. | `afa3593`, correctifs `b8b4d38` |
 | 2026-10-28 | JED-08 — annulations et audit métier | Annulation idempotente, motifs obligatoires, restauration du stock par correction atomique et journal consultable; validation ciblée: `python manage.py test apps/sales apps/inventory --verbosity=1` -> 50 tests OK. | `feat: trace les annulations de vente` |
-| 2026-10-28 | JED-09 — dépenses catégorisées | Saisie par activité/catégorie; montants Decimal positifs; catégories gérées en admin; corrections avec motif et audit avant/après; annulations traçables; employés limités à leurs dépenses; 7 tests JED-09 OK, `manage.py check`, `makemigrations --check --dry-run` et `git diff --check` OK. | En attente de commit |
+| 2026-10-28 | JED-09 — dépenses catégorisées | Saisie par activité/catégorie; montants Decimal positifs; catégories gérées en admin; corrections avec motif et audit avant/après; annulations traçables; employés limités à leurs dépenses; 7 tests JED-09 OK, `manage.py check`, `makemigrations --check --dry-run` et `git diff --check` OK. | `4aac805` |
+| 2026-10-29 | JED-10 — indicateurs et tableaux de bord essentiels | Vues par activité et globales; ventes/dépenses annulées exclues; marge brute estimée limitée aux lignes fiables; solde présenté comme indicatif, non comptable; filtres de dates et périmètre rôle côté serveur. 9 tests analytics OK, `manage.py check`, `makemigrations --check --dry-run` et `git diff --check` OK. | `feat: ajoute les tableaux de bord essentiels` |
 
 ## À remplir à chaque passage
 
-- Tâche active : JED-09 — dépenses catégorisées (validée)
+- Tâche active : JED-10 — indicateurs et tableaux de bord essentiels (implémentation validée, revue/commit en attente)
 - Agent/outils utilisés : — (assistant IA via Cline/KiloCode), Python 3.14.4, Django 6.1.2
-- Changements et vérification : dépenses par activité/catégorie, correction avec motif et audit, annulation et périmètre d'accès employés; 7 tests OK; checks Django, migrations et diff propres
+- Changements et vérification : tableaux de bord par activité et globaux; ventes annulées exclues; marge fiable explicitement estimative; période et accès filtrés côté serveur; 9 tests analytics OK; checks Django, migrations et diff propres
 - Bloqueurs / décision attendue : aucun bloqueur connu
-- Prochaine tâche débloquée : JED-10 — indicateurs et tableaux de bord essentiels
+- Prochaine tâche débloquée : JED-11 — interface responsive et parcours prioritaires, après revue/commit de JED-10
