@@ -4,7 +4,18 @@ from datetime import date
 from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
+from django.db.models import (
+    Count,
+    DecimalField,
+    Exists,
+    ExpressionWrapper,
+    F,
+    Max,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+)
 
 from apps.accounts.permissions import (
     get_accessible_activities,
@@ -13,8 +24,10 @@ from apps.accounts.permissions import (
     user_is_global,
 )
 from apps.activities.models import Activity
-from apps.expenses.models import Expense
+from apps.catalog.models import Product
+from apps.expenses.models import Expense, ExpenseAuditLog
 from apps.sales.models import Sale, SaleCancellation, SaleLine
+from apps.inventory.models import StockMovement
 
 ZERO = Decimal("0.00")
 
@@ -75,13 +88,294 @@ def global_activity_metrics(user, start_date: date, end_date: date) -> list[dict
     if not user_is_global(user):
         raise PermissionDenied("Cette vue est réservée au gérant global.")
     activities = Activity.objects.filter(is_active=True).order_by("name")
-    return [
-        {
-            "activity": activity,
-            **dashboard_metrics(user, activity, start_date, end_date),
+    rows = []
+    for activity in activities:
+        metrics = dashboard_metrics(user, activity, start_date, end_date)
+        stock_purchases = StockMovement.objects.filter(
+            activity=activity,
+            movement_type=StockMovement.MovementType.ENTRY,
+            unit_cost__isnull=False,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        ).aggregate(
+            total=Sum(
+                ExpressionWrapper(
+                    F("quantity") * F("unit_cost"),
+                    output_field=DecimalField(max_digits=16, decimal_places=2),
+                )
+            )
+        )["total"]
+        rows.append(
+            {
+                "activity": activity,
+                **metrics,
+                "stock_purchases": stock_purchases or ZERO,
+            }
+        )
+    return rows
+
+
+def global_employee_metrics(user, start_date: date, end_date: date) -> list[dict]:
+    """Aggregate operational activity by employee and activity for the period."""
+    if not user_is_global(user):
+        raise PermissionDenied("Cette vue est réservée au gérant global.")
+
+    activities = Activity.objects.filter(is_active=True)
+    canceled_sales = SaleCancellation.objects.values("sale_id")
+    grouped = {}
+
+    sales = (
+        Sale.objects.filter(
+            activity__in=activities,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        )
+        .exclude(pk__in=canceled_sales)
+        .values(
+            "activity_id",
+            "activity__name",
+            "user_id",
+            "user__username",
+            "user__first_name",
+            "user__last_name",
+        )
+        .annotate(
+            sale_count=Count("pk"),
+            revenue=Sum("total"),
+            last_operation=Max("created_at"),
+        )
+    )
+    for row in sales:
+        key = (row["activity_id"], row["user_id"])
+        grouped[key] = {
+            "activity": row["activity__name"],
+            "username": row["user__username"],
+            "full_name": " ".join(
+                part for part in (row["user__first_name"], row["user__last_name"]) if part
+            ) or row["user__username"],
+            "sale_count": row["sale_count"],
+            "revenue": row["revenue"] or ZERO,
+            "expense_count": 0,
+            "expenses": ZERO,
+            "stock_purchases": ZERO,
+            "last_operation": row["last_operation"],
         }
-        for activity in activities
-    ]
+
+    expenses = (
+        Expense.objects.filter(
+            activity__in=activities,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+            is_canceled=False,
+        )
+        .values(
+            "activity_id",
+            "activity__name",
+            "user_id",
+            "user__username",
+            "user__first_name",
+            "user__last_name",
+        )
+        .annotate(
+            expense_count=Count("pk"),
+            expenses=Sum("amount"),
+            last_operation=Max("created_at"),
+        )
+    )
+    for row in expenses:
+        key = (row["activity_id"], row["user_id"])
+        employee = grouped.setdefault(
+            key,
+            {
+                "activity": row["activity__name"],
+                "username": row["user__username"],
+                "full_name": " ".join(
+                    part for part in (row["user__first_name"], row["user__last_name"]) if part
+                ) or row["user__username"],
+                "sale_count": 0,
+                "revenue": ZERO,
+                "expense_count": 0,
+                "expenses": ZERO,
+                "stock_purchases": ZERO,
+                "last_operation": row["last_operation"],
+            },
+        )
+        employee["expense_count"] = row["expense_count"]
+        employee["expenses"] = row["expenses"] or ZERO
+        employee["last_operation"] = max(
+            employee["last_operation"], row["last_operation"]
+        )
+
+    movements = (
+        StockMovement.objects.filter(
+            activity__in=activities,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        )
+        .values(
+            "activity_id",
+            "activity__name",
+            "user_id",
+            "user__username",
+            "user__first_name",
+            "user__last_name",
+        )
+        .annotate(last_operation=Max("created_at"))
+    )
+    for row in movements:
+        key = (row["activity_id"], row["user_id"])
+        employee = grouped.setdefault(
+            key,
+            {
+                "activity": row["activity__name"],
+                "username": row["user__username"],
+                "full_name": " ".join(
+                    part for part in (row["user__first_name"], row["user__last_name"]) if part
+                ) or row["user__username"],
+                "sale_count": 0,
+                "revenue": ZERO,
+                "expense_count": 0,
+                "expenses": ZERO,
+                "stock_purchases": ZERO,
+                "last_operation": row["last_operation"],
+            },
+        )
+        employee["last_operation"] = max(
+            employee["last_operation"], row["last_operation"]
+        )
+
+    stock_purchase_rows = (
+        StockMovement.objects.filter(
+            activity__in=activities,
+            movement_type=StockMovement.MovementType.ENTRY,
+            unit_cost__isnull=False,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        )
+        .values(
+            "activity_id",
+            "activity__name",
+            "user_id",
+            "user__username",
+            "user__first_name",
+            "user__last_name",
+        )
+        .annotate(
+            stock_purchases=Sum(
+                ExpressionWrapper(
+                    F("quantity") * F("unit_cost"),
+                    output_field=DecimalField(max_digits=16, decimal_places=2),
+                )
+            ),
+            last_operation=Max("created_at"),
+        )
+    )
+    for row in stock_purchase_rows:
+        key = (row["activity_id"], row["user_id"])
+        employee = grouped.setdefault(
+            key,
+            {
+                "activity": row["activity__name"],
+                "username": row["user__username"],
+                "full_name": " ".join(
+                    part for part in (row["user__first_name"], row["user__last_name"]) if part
+                ) or row["user__username"],
+                "sale_count": 0,
+                "revenue": ZERO,
+                "expense_count": 0,
+                "expenses": ZERO,
+                "stock_purchases": ZERO,
+                "last_operation": row["last_operation"],
+            },
+        )
+        employee["stock_purchases"] = row["stock_purchases"] or ZERO
+        employee["last_operation"] = max(employee["last_operation"], row["last_operation"])
+
+    recent_events = (
+        SaleCancellation.objects.filter(
+            sale__activity__in=activities,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        )
+        .values(
+            "sale__activity_id",
+            "sale__activity__name",
+            "user_id",
+            "user__username",
+            "user__first_name",
+            "user__last_name",
+        )
+        .annotate(last_operation=Max("created_at"))
+    )
+    for row in recent_events:
+        activity_id = row["sale__activity_id"]
+        activity_name = row["sale__activity__name"]
+        key = (activity_id, row["user_id"])
+        employee = grouped.get(key)
+        if employee:
+            employee["last_operation"] = max(employee["last_operation"], row["last_operation"])
+        else:
+            grouped[key] = {
+                "activity": activity_name,
+                "username": row["user__username"],
+                "full_name": " ".join(
+                    part for part in (row["user__first_name"], row["user__last_name"]) if part
+                ) or row["user__username"],
+                "sale_count": 0,
+                "revenue": ZERO,
+                "expense_count": 0,
+                "expenses": ZERO,
+                "stock_purchases": ZERO,
+                "last_operation": row["last_operation"],
+            }
+
+    expense_events = (
+        ExpenseAuditLog.objects.filter(
+            expense__activity__in=activities,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        )
+        .values(
+            "expense__activity_id",
+            "expense__activity__name",
+            "user_id",
+            "user__username",
+            "user__first_name",
+            "user__last_name",
+        )
+        .annotate(last_operation=Max("created_at"))
+    )
+    for row in expense_events:
+        activity_id = row["expense__activity_id"]
+        activity_name = row["expense__activity__name"]
+        key = (activity_id, row["user_id"])
+        employee = grouped.get(key)
+        if employee:
+            employee["last_operation"] = max(employee["last_operation"], row["last_operation"])
+        else:
+            grouped[key] = {
+                "activity": activity_name,
+                "username": row["user__username"],
+                "full_name": " ".join(
+                    part for part in (row["user__first_name"], row["user__last_name"]) if part
+                ) or row["user__username"],
+                "sale_count": 0,
+                "revenue": ZERO,
+                "expense_count": 0,
+                "expenses": ZERO,
+                "stock_purchases": ZERO,
+                "last_operation": row["last_operation"],
+            }
+
+    return sorted(
+        grouped.values(),
+        key=lambda employee: (
+            employee["last_operation"],
+            employee["activity"],
+            employee["full_name"].casefold(),
+        ),
+        reverse=True,
+    )
 
 
 def activity_dashboard_metrics(user, activity_slug: str, start_date: date, end_date: date) -> tuple[Activity, dict]:
@@ -89,6 +383,174 @@ def activity_dashboard_metrics(user, activity_slug: str, start_date: date, end_d
     if activity is None or not user_has_activity_access(user, activity):
         raise PermissionDenied("Accès non autorisé à cette activité.")
     return activity, dashboard_metrics(user, activity, start_date, end_date)
+
+
+def activity_operational_details(user, activity, start_date: date, end_date: date) -> dict:
+    """Return period details while keeping employee records author-scoped."""
+    if not user_has_activity_access(user, activity):
+        raise PermissionDenied("Accès non autorisé à cette activité.")
+
+    sales = Sale.objects.filter(
+        activity=activity,
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+    ).annotate(
+        _is_canceled=Exists(
+            SaleCancellation.objects.filter(sale_id=OuterRef("pk"))
+        )
+    ).select_related("user").prefetch_related("lines__product", "lines__service")
+    expenses = Expense.objects.filter(
+        activity=activity,
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+    ).select_related("category", "user")
+    movements = StockMovement.objects.filter(
+        activity=activity,
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+    ).select_related("product", "user")
+
+    if user_is_employee_in_activity(user, activity):
+        sales = sales.filter(user=user)
+        expenses = expenses.filter(user=user)
+        movements = movements.filter(user=user)
+
+    expenses_by_category = (
+        expenses.filter(is_canceled=False)
+        .values("category__name")
+        .annotate(amount=Sum("amount"), expense_count=Count("pk"))
+        .order_by("category__name")
+    )
+    stock_purchase_totals = movements.filter(
+        movement_type=StockMovement.MovementType.ENTRY,
+        unit_cost__isnull=False,
+    ).aggregate(
+        amount=Sum(
+            ExpressionWrapper(
+                F("quantity") * F("unit_cost"),
+                output_field=DecimalField(max_digits=16, decimal_places=2),
+            )
+        ),
+        movement_count=Count("pk"),
+    )
+
+    sales = sales.order_by("-created_at")[:30]
+    expenses = expenses.order_by("-created_at")[:30]
+    movements = movements.order_by("-created_at")[:30]
+
+    sales_by_item = (
+        SaleLine.objects.filter(
+            sale__activity=activity,
+            sale__created_at__date__gte=start_date,
+            sale__created_at__date__lte=end_date,
+        )
+        .exclude(sale__cancellation__isnull=False)
+        .values("product__name", "service__name")
+        .annotate(quantity=Sum("quantity"), revenue=Sum("total"))
+        .order_by("-revenue")
+    )
+    employee_scope = user_is_employee_in_activity(user, activity)
+    if employee_scope:
+        sales_by_item = sales_by_item.filter(sale__user=user)
+
+    product_sales = Q(
+        sale_lines__sale__created_at__date__gte=start_date,
+        sale_lines__sale__created_at__date__lte=end_date,
+        sale_lines__sale__cancellation__isnull=True,
+    )
+    reliable_product_sales = product_sales & Q(sale_lines__margin_reliable=True)
+    last_sales = SaleLine.objects.filter(
+        product_id=OuterRef("pk"),
+        sale__activity=activity,
+    ).exclude(sale__cancellation__isnull=False)
+    if employee_scope:
+        product_sales &= Q(sale_lines__sale__user=user)
+        reliable_product_sales &= Q(sale_lines__sale__user=user)
+        last_sales = last_sales.filter(sale__user=user)
+
+    product_rows = Product.objects.filter(activity=activity).annotate(
+        sold_line_count=Count("sale_lines__pk", filter=product_sales),
+        sold_quantity=Sum("sale_lines__quantity", filter=product_sales),
+        revenue=Sum("sale_lines__total", filter=product_sales),
+        reliable_line_count=Count("sale_lines__pk", filter=reliable_product_sales),
+        reliable_revenue=Sum("sale_lines__total", filter=reliable_product_sales),
+        reliable_cogs=Sum(
+            ExpressionWrapper(
+                F("sale_lines__cost") * F("sale_lines__quantity"),
+                output_field=DecimalField(max_digits=16, decimal_places=2),
+            ),
+            filter=reliable_product_sales,
+        ),
+        reliable_margin=Sum(
+            ExpressionWrapper(
+                (F("sale_lines__unit_price") - F("sale_lines__cost"))
+                * F("sale_lines__quantity"),
+                output_field=DecimalField(max_digits=16, decimal_places=2),
+            ),
+            filter=reliable_product_sales,
+        ),
+        unknown_cost_line_count=Count(
+            "sale_lines__pk",
+            filter=product_sales & Q(sale_lines__cost__isnull=True),
+        ),
+        unreliable_cost_line_count=Count(
+            "sale_lines__pk",
+            filter=product_sales
+            & Q(sale_lines__cost__isnull=False, sale_lines__margin_reliable=False),
+        ),
+        last_sale_at=Subquery(last_sales.order_by("-sale__created_at").values("sale__created_at")[:1]),
+    ).order_by("name")
+    product_profitability = []
+    for product in product_rows:
+        has_reliable_sales = product.reliable_line_count > 0
+        reliable_revenue = product.reliable_revenue if has_reliable_sales else None
+        reliable_margin = product.reliable_margin if has_reliable_sales else None
+        product_profitability.append(
+            {
+                "product": product,
+                "sold_line_count": product.sold_line_count,
+                "quantity": product.sold_quantity or 0,
+                "revenue": product.revenue or ZERO,
+                "reliable_line_count": product.reliable_line_count,
+                "reliable_revenue": reliable_revenue,
+                "reliable_cogs": product.reliable_cogs if has_reliable_sales else None,
+                "reliable_margin": reliable_margin,
+                "reliable_margin_rate": (
+                    reliable_margin / reliable_revenue * 100
+                    if reliable_revenue
+                    else None
+                ),
+                "unknown_cost_line_count": product.unknown_cost_line_count,
+                "unreliable_cost_line_count": product.unreliable_cost_line_count,
+                "last_sale_at": product.last_sale_at,
+            }
+        )
+
+    if employee_scope:
+        expense_audits = ExpenseAuditLog.objects.filter(
+            expense__activity=activity,
+            expense__user=user,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        ).select_related("expense", "user").order_by("-created_at")[:30]
+    else:
+        expense_audits = ExpenseAuditLog.objects.filter(
+            expense__activity=activity,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        ).select_related("expense", "user").order_by("-created_at")[:30]
+
+    return {
+        "sales": sales,
+        "expenses": expenses,
+        "movements": movements,
+        "sales_by_item": sales_by_item,
+        "product_profitability": product_profitability,
+        "expenses_by_category": expenses_by_category,
+        "stock_purchase_total": stock_purchase_totals["amount"] or ZERO,
+        "stock_purchase_count": stock_purchase_totals["movement_count"],
+        "expense_audits": expense_audits,
+    }
 
 
 def accessible_dashboard_activities(user):

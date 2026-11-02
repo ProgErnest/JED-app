@@ -53,6 +53,16 @@ Le serveur est accessible sur <http://127.0.0.1:8000> (DEBUG activé).
 - Les variables d'environnement peuvent être définies dans un fichier `.env`
   (modèle : `.env.example`, **jamais commité**).
 
+### Comptes et accès
+
+- Le gérant global ouvre **Comptes** dans la barre de navigation pour créer,
+  modifier ou désactiver les comptes et leurs accès aux activités.
+- Un responsable ouvre **Équipe** pour gérer les accès de son activité. Il peut
+  attribuer les rôles responsable ou employé, mais ne peut pas donner un accès
+  global ni désactiver le compte complet.
+- Les montants sont affichés en FCFA (XAF). Cet affichage ne convertit pas les
+  valeurs déjà enregistrées.
+
 ---
 
 ## Configuration de production

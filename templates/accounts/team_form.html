@@ -1,0 +1,47 @@
+{% extends "catalog/base.html" %}
+{% load static %}
+
+{% block title %}{% if membership %}Modifier un accès{% else %}Créer un accès{% endif %} — JED{% endblock %}
+
+{% block content %}
+<div class="page-heading"><h1>{% if membership %}Modifier un accès{% else %}Créer un accès{% endif %}</h1></div>
+<form method="post" class="form-panel" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <h2 class="section-title">Compte</h2>
+    <div class="form-row">
+        {% for field in form %}
+        {% if field.name == "username" or field.name == "first_name" or field.name == "last_name" or field.name == "password" %}
+        <div class="form-group">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+            {% if field.help_text %}<p class="hint">{{ field.help_text }}</p>{% endif %}
+            {{ field.errors }}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    <h2 class="section-title">Accès</h2>
+    <div class="form-row">
+        {% for field in form %}
+        {% if field.name == "activity" or field.name == "role" %}
+        <div class="form-group">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+            {% if field.help_text %}<p class="hint">{{ field.help_text }}</p>{% endif %}
+            {{ field.errors }}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% for field in form %}
+    {% if field.name == "is_active" or field.name == "user_is_active" %}
+    <div class="form-group">
+        <div class="checkbox-row">{{ field }}<label for="{{ field.id_for_label }}">{{ field.label }}</label></div>
+        {% if field.help_text %}<p class="hint">{{ field.help_text }}</p>{% endif %}
+        {{ field.errors }}
+    </div>
+    {% endif %}
+    {% endfor %}
+    <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-check"></use></svg>{% if membership %}Enregistrer les changements{% else %}Créer l’accès{% endif %}</button>
+    <a class="btn btn-secondary cancel action-link" href="{% if activity %}{% url 'accounts:team_activity' activity_slug=activity.slug %}{% else %}{% url 'accounts:team_global' %}{% endif %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-back"></use></svg>Annuler</a>
+</form>
+{% endblock %}

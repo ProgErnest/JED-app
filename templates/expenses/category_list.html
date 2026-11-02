@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="container py-4">
-  <h1>Catégories de dépenses</h1>
+  <div class="page-heading"><h1>Catégories de dépenses</h1></div>
   <div class="card shadow-sm">
     <div class="card-body">
       {% if categories %}
@@ -17,7 +17,7 @@
           {% endfor %}
         </ul>
       {% else %}
-        <p class="mb-0 text-muted">Aucune catégorie pour cette activité.</p>
+        <p class="empty-state mb-0">Aucune catégorie de dépense n’est définie pour cette activité.</p>
       {% endif %}
     </div>
   </div>

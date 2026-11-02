@@ -1,38 +1,46 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block content %}
-<h1>Produits — {{ activity.name }}</h1>
-<p>
-    <a href="{% url 'catalog:product_add' activity_slug=activity.slug %}" class="btn">+ Nouveau produit</a>
-</p>
-{% if products %}
-<table>
-    <thead>
-        <tr>
-            <th>Nom</th>
-            <th>Unité</th>
-            <th>Prix</th>
-            <th>Statut</th>
-            <th>Modifié le</th>
-            <th class="actions">Actions</th>
-        </tr>
-    </thead>
-    <tbody>
+<div class="page-shell">
+    <div class="page-heading">
+        <div>
+            <p class="page-kicker">Catalogue</p>
+            <h1>Produits</h1>
+        </div>
+        <a href="{% url 'catalog:product_add' activity_slug=activity.slug %}" class="btn action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Nouveau produit</a>
+    </div>
+    {% if products %}
+    <ul class="product-grid" aria-label="Produits de l’activité {{ activity.name }}">
         {% for product in products %}
-        <tr>
-            <td>{{ product.name }}</td>
-            <td>{{ product.unit }}</td>
-            <td>{{ product.price }} €</td>
-            <td>{{ product.is_active|yesno:"Actif,Inactif" }}</td>
-            <td>{{ product.updated_at|date:"d/m/Y H:i" }}</td>
-            <td class="actions">
-                <a href="{% url 'catalog:product_edit' activity_slug=product.activity.slug slug=product.slug %}" class="btn btn-secondary">Modifier</a>
-            </td>
-        </tr>
+        <li class="product-card">
+            <div class="product-card__heading">
+                <h2>{{ product.name }}</h2>
+                <span class="product-card__unit">Par {{ product.unit }}</span>
+            </div>
+            <div class="product-card__prices">
+                <div class="product-price product-price--purchase">
+                    <span class="product-price__label">Achat / unité</span>
+                    {% if product.stock_quantity > 0 and product.average_cost > 0 or product.has_zero_purchase_cost and not product.has_positive_purchase_cost %}
+                    <strong>{{ product.average_cost|floatformat:"-2g" }} <span>FCFA</span></strong>
+                    {% else %}
+                    <strong class="product-price__unknown">Non renseigné</strong>
+                    {% endif %}
+                </div>
+                <div class="product-price product-price--sale">
+                    <span class="product-price__label">Vente / unité</span>
+                    <strong>{{ product.price|floatformat:"-2g" }} <span>FCFA</span></strong>
+                </div>
+            </div>
+            <a href="{% url 'catalog:product_edit' activity_slug=product.activity.slug slug=product.slug %}" class="product-card__edit" aria-label="Modifier {{ product.name }}">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>
+                Modifier
+            </a>
+        </li>
         {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p>Aucun produit pour cette activité.</p>
-{% endif %}
+    </ul>
+    {% else %}
+    <p class="empty-state">Aucun produit enregistré. Ajoutez le premier produit pour commencer.</p>
+    {% endif %}
+</div>
 {% endblock %}

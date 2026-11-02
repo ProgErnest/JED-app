@@ -1,10 +1,11 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block content %}
-<h1>Connexion — JED</h1>
-{% if form.errors %}
-<p style="color:#dc3545;">Nom d'utilisateur ou mot de passe incorrect.</p>
-{% endif %}
+<section class="login-panel" aria-labelledby="login-title">
+<h1 id="login-title">Connexion</h1>
+<p>Accédez à votre espace de travail.</p>
+{% if form.errors %}<div class="alert alert-danger" role="alert">Nom d'utilisateur ou mot de passe incorrect. Vérifiez vos identifiants.</div>{% endif %}
 <form method="post" novalidate>
     {% csrf_token %}
     <div class="form-group">
@@ -17,6 +18,7 @@
         {{ form.password }}
         {{ form.password.errors }}
     </div>
-    <button type="submit">Se connecter</button>
+    <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-login"></use></svg>Se connecter</button>
 </form>
+</section>
 {% endblock %}

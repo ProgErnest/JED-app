@@ -1,15 +1,17 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block content %}
-<h1>Services — {{ activity.name }}</h1>
-<p>
-    <a href="{% url 'catalog:service_add' activity_slug=activity.slug %}" class="btn">+ Nouveau service</a>
-</p>
+<div class="page-heading">
+    <h1>Prestations</h1>
+    <a href="{% url 'catalog:service_add' activity_slug=activity.slug %}" class="btn action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Nouvelle prestation</a>
+</div>
 {% if services %}
+<div class="table-responsive mobile-list" role="region" aria-label="Liste des prestations" tabindex="0">
 <table>
     <thead>
         <tr>
-            <th>Nom</th>
+            <th data-label="Prestation">Nom</th>
             <th>Prix</th>
             <th>Durée</th>
             <th>Statut</th>
@@ -20,19 +22,20 @@
     <tbody>
         {% for service in services %}
         <tr>
-            <td>{{ service.name }}</td>
-            <td>{{ service.price }} €</td>
-            <td>{{ service.duration_minutes }} min</td>
-            <td>{{ service.is_active|yesno:"Actif,Inactif" }}</td>
-            <td>{{ service.updated_at|date:"d/m/Y H:i" }}</td>
+            <td data-label="Prestation">{{ service.name }}</td>
+            <td data-label="Prix">{{ service.price }} FCFA</td>
+            <td data-label="Durée">{{ service.duration_minutes }} min</td>
+            <td data-label="Statut">{{ service.is_active|yesno:"Actif,Inactif" }}</td>
+            <td data-label="Modifiée le">{{ service.updated_at|date:"d/m/Y H:i" }}</td>
             <td class="actions">
-                <a href="{% url 'catalog:service_edit' activity_slug=activity.slug slug=service.slug %}" class="btn btn-secondary">Modifier</a>
+                <a href="{% url 'catalog:service_edit' activity_slug=activity.slug slug=service.slug %}" class="btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>Modifier</a>
             </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+ </div>
 {% else %}
-<p>Aucun service pour cette activité.</p>
+<p class="empty-state">Aucune prestation enregistrée. Ajoutez la première prestation pour commencer.</p>
 {% endif %}
 {% endblock %}

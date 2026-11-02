@@ -1,0 +1,33 @@
+{% extends "catalog/base.html" %}
+{% load static %}
+
+{% block title %}Mes activités — JED{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+    <div class="page-heading">
+        <div>
+            <p class="page-kicker">Espace de travail</p>
+            <h1>Mes activités</h1>
+        </div>
+    </div>
+    {% if is_global %}<p class="page-summary">Vous avez accès à toutes les activités.</p>{% endif %}
+    {% if activities %}
+    <ul class="activity-grid">
+        {% for activity in activities %}
+        <li>
+            <h2>{{ activity.name }}</h2>
+            {% if activity.description %}<p class="text-muted">{{ activity.description }}</p>{% endif %}
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn action-link" href="{% url 'analytics:activity-dashboard' activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-dashboard"></use></svg>Voir les indicateurs</a>
+                <a class="btn btn-secondary action-link" href="{% url 'sales:sale_list' activity_slug=activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-sale"></use></svg>Voir les ventes</a>
+                {% if is_global or activity.pk in managed_activity_ids %}<a class="btn btn-secondary action-link" href="{% url 'accounts:team_activity' activity_slug=activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-team"></use></svg>Gérer l’équipe</a>{% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">Aucune activité n’est encore associée à votre compte. Contactez le gérant pour obtenir un accès.</p>
+    {% endif %}
+</div>
+{% endblock %}

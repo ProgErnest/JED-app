@@ -1,39 +1,51 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block content %}
-<h1>Mouvements de stock — {{ activity.name }}</h1>
-<p>
-    <a href="{% url 'inventory:movement_entry_add' activity_slug=activity.slug %}" class="btn">+ Entrée de stock</a>
-    <a href="{% url 'inventory:movement_correction_add' activity_slug=activity.slug %}" class="btn">+ Correction de stock</a>
-</p>
-{% if movements %}
-<table>
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Produit</th>
-            <th>Type</th>
-            <th>Quantité</th>
-            <th>Coût unitaire</th>
-            <th>Auteur</th>
-            <th>Motif</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for movement in movements %}
-        <tr>
-            <td>{{ movement.created_at|date:"d/m/Y H:i" }}</td>
-            <td>{{ movement.product.name }}</td>
-            <td>{{ movement.get_movement_type_display }}</td>
-            <td>{{ movement.quantity }}</td>
-            <td>{{ movement.unit_cost|default:"—" }} €</td>
-            <td>{{ movement.user.username }}</td>
-            <td>{{ movement.reason|default:"—" }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p>Aucun mouvement de stock pour cette activité.</p>
-{% endif %}
+<div class="page-shell">
+    <div class="page-heading">
+        <div>
+            <p class="page-kicker">Stock</p>
+            <h1>Mouvements de stock</h1>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{% url 'inventory:movement_entry_add' activity_slug=activity.slug %}" class="btn action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Entrée de stock</a>
+            <a href="{% url 'inventory:movement_correction_add' activity_slug=activity.slug %}" class="btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>Corriger le stock</a>
+        </div>
+    </div>
+    {% if movements %}
+    <div class="dashboard-section">
+        <div class="table-responsive mobile-list" role="region" aria-label="Historique du stock" tabindex="0">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Produit</th>
+                    <th>Type</th>
+                    <th>Quantité</th>
+                    <th>Coût unitaire</th>
+                    <th>Auteur</th>
+                    <th>Motif</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for movement in movements %}
+                <tr>
+                    <td data-label="Date">{{ movement.created_at|date:"d/m/Y H:i" }}</td>
+                    <td data-label="Produit">{{ movement.product.name }}</td>
+                    <td data-label="Type">{{ movement.get_movement_type_display }}</td>
+                    <td data-label="Quantité">{{ movement.quantity }}</td>
+                    <td data-label="Coût unitaire">{{ movement.unit_cost|default:"—" }} FCFA</td>
+                    <td data-label="Auteur">{{ movement.user.username }}</td>
+                    <td data-label="Motif">{{ movement.reason|default:"—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% else %}
+    <p class="empty-state">Aucun mouvement enregistré. Une entrée ou une correction apparaîtra ici.</p>
+    {% endif %}
+</div>
 {% endblock %}

@@ -1,48 +1,55 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block content %}
-<h1>{% if object %}Modifier{% else %}Nouveau{% endif %} produit — {{ activity.name }}</h1>
-<form method="post" novalidate>
-    {% csrf_token %}
-    <div class="form-row">
-        <div class="form-group">
-            {{ form.name.label_tag }}
-            {{ form.name }}
-            {{ form.name.errors }}
-        </div>
-        <div class="form-group">
-            {{ form.slug.label_tag }}
-            {{ form.slug }}
-            {{ form.slug.errors }}
-        </div>
+<div class="page-heading">
+    <div>
+        <p class="page-kicker">Catalogue</p>
+        <h1>{% if object %}Modifier un produit{% else %}Nouveau produit{% endif %}</h1>
     </div>
-    <div class="form-row">
+</div>
+<form method="post" novalidate class="form-panel product-form">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="form-group product-form__name">
+        {{ form.name.label_tag }}
+        {{ form.name }}
+        {{ form.name.errors }}
+    </div>
+    <div class="form-row product-form__details">
         <div class="form-group">
             {{ form.unit.label_tag }}
             {{ form.unit }}
             {{ form.unit.errors }}
-            <p class="hint">Ex: pièce, kg, litre, bouteille</p>
+            <p class="hint">Ex. : pièce, kg, litre, bouteille</p>
         </div>
         <div class="form-group">
             {{ form.price.label_tag }}
             {{ form.price }}
             {{ form.price.errors }}
+            <p class="hint">Prix payé par le client pour une unité.</p>
         </div>
     </div>
-    <div class="form-group">
-        {{ form.description.label_tag }}
-        {{ form.description }}
-        {{ form.description.errors }}
-    </div>
-    <div class="form-group" style="display:flex; align-items:center;">
-        {{ form.is_active }}
-        <label style="margin:0; font-weight:normal;">{{ form.is_active.label }}</label>
-        {{ form.is_active.errors }}
-    </div>
+    <details class="product-form__optional" {% if object and object.description %}open{% endif %}>
+        <summary>Description (facultatif)</summary>
+        <div class="form-group">
+            {{ form.description }}
+            {{ form.description.errors }}
+        </div>
+    </details>
     {% if object %}
-    <p class="hint">La modification du prix conserve l'historique des prix précédents.</p>
+    <div class="product-form__edit-options">
+        <div class="form-group checkbox-row">
+            {{ form.is_active }}
+            <label for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
+            {{ form.is_active.errors }}
+        </div>
+        <p class="hint">La modification du prix conserve son historique.</p>
+    </div>
     {% endif %}
-    <button type="submit">Enregistrer</button>
-    <a href="{% url 'catalog:product_list' activity_slug=activity.slug %}" class="cancel btn btn-secondary">Annuler</a>
+    <div class="product-form__actions">
+        <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-check"></use></svg>{% if object %}Enregistrer{% else %}Créer le produit{% endif %}</button>
+    <a href="{% url 'catalog:product_list' activity_slug=activity.slug %}" class="cancel btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-back"></use></svg>Annuler</a>
+    </div>
 </form>
 {% endblock %}

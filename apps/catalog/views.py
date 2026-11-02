@@ -8,6 +8,7 @@ activités autorisées (voir JED-03).
 from __future__ import annotations
 
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db.models import Exists, OuterRef
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -16,6 +17,7 @@ from django.views.generic import CreateView, ListView, UpdateView
 
 from apps.activities.models import Activity
 from apps.accounts.permissions import ActivityAccessRequiredMixin
+from apps.inventory.models import StockMovement
 from .forms import ProductForm, ServiceForm
 from .models import Product, Service
 
@@ -28,7 +30,19 @@ class ProductListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView)
 
     def get_queryset(self):
         self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
-        return Product.objects.filter(activity=self.activity).order_by("name")
+        purchase_entries = StockMovement.objects.filter(
+            product_id=OuterRef("pk"),
+            movement_type=StockMovement.MovementType.ENTRY,
+            unit_cost__isnull=False,
+        )
+        return (
+            Product.objects.filter(activity=self.activity)
+            .annotate(
+                has_zero_purchase_cost=Exists(purchase_entries.filter(unit_cost=0)),
+                has_positive_purchase_cost=Exists(purchase_entries.filter(unit_cost__gt=0)),
+            )
+            .order_by("name")
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

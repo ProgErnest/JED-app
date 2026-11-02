@@ -1,10 +1,13 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block content %}
-<h1>{{ page_title|default:"Mouvement de stock" }} — {{ activity.name }}</h1>
-<form method="post" novalidate>
+<div class="page-heading">
+    <h1>{{ page_title|default:"Entrée de stock" }}</h1>
+</div>
+<form method="post" novalidate class="form-panel">
     {% csrf_token %}
-    {{ form.non_field_errors }}
+    {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
     <div class="form-row">
         <div class="form-group">
             {{ form.product.label_tag }}
@@ -16,7 +19,7 @@
             {{ form.quantity }}
             {{ form.quantity.errors }}
             {% if page_title == "Correction de stock" %}
-            <p class="hint">Quantité signée : positive pour un ajout, négative pour une perte.</p>
+            <p class="hint">Saisissez un nombre positif pour ajouter du stock ou un nombre négatif pour retirer.</p>
             {% else %}
             <p class="hint">Nombre d'unités reçues.</p>
             {% endif %}
@@ -42,7 +45,7 @@
             {% endif %}
         </div>
     </div>
-    <button type="submit">Enregistrer</button>
-    <a href="{% url 'inventory:movement_list' activity_slug=activity.slug %}" class="cancel btn btn-secondary">Annuler</a>
+    <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-check"></use></svg>Enregistrer</button>
+    <a href="{% url 'inventory:movement_list' activity_slug=activity.slug %}" class="cancel btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-back"></use></svg>Annuler</a>
 </form>
 {% endblock %}

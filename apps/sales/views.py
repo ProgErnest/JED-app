@@ -211,7 +211,7 @@ class SaleCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, View):
 
             messages.success(
                 request,
-                f"Ticket #{sale.pk} enregistré — total {sale.total} €.",
+                f"Ticket #{sale.pk} enregistré — total {sale.total} FCFA.",
             )
             return redirect(
                 "sales:sale_detail",
@@ -223,13 +223,20 @@ class SaleCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, View):
     def render(self, request, formset):
         from django.template.response import TemplateResponse
 
+        products = Product.objects.filter(
+            activity=self.activity, is_active=True, stock_quantity__gt=0
+        )
+        services = Service.objects.filter(activity=self.activity, is_active=True)
         return TemplateResponse(
             request,
             self.template_name,
             {
                 "activity": self.activity,
                 "formset": formset,
-                "products": Product.objects.filter(activity=self.activity, is_active=True),
-                "services": Service.objects.filter(activity=self.activity, is_active=True),
+                "products": products,
+                "services": services,
+                "stock_by_product": {
+                    str(product.pk): product.stock_quantity for product in products
+                },
             },
         )

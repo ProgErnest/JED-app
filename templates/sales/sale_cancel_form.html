@@ -1,17 +1,18 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block content %}
-<h1>Annuler le ticket #{{ sale.pk }} — {{ activity.name }}</h1>
-<p>Le ticket initial et ses lignes seront conservés. Les produits vendus seront réintégrés au stock avec un mouvement traçable.</p>
-<form method="post">
+<div class="page-heading"><h1>Annuler la vente #{{ sale.pk }}</h1></div>
+<p class="ticket-note">La vente restera dans l’historique. Les produits vendus seront remis en stock avec une trace de l’opération.</p>
+<form method="post" class="form-panel">
     {% csrf_token %}
-    {{ form.non_field_errors }}
+    {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
     <div class="form-group">
         {{ form.reason.label_tag }}
         {{ form.reason }}
         {{ form.reason.errors }}
     </div>
-    <button type="submit">Confirmer l’annulation</button>
-    <a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}" class="cancel btn btn-secondary">Retour</a>
+    <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-cancel"></use></svg>Confirmer l’annulation</button>
+    <a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}" class="cancel btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-back"></use></svg>Retour</a>
 </form>
 {% endblock %}

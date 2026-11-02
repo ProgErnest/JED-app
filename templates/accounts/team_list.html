@@ -1,0 +1,51 @@
+{% extends "catalog/base.html" %}
+{% load static %}
+
+{% block title %}Gestion des comptes — JED{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+    <div class="page-heading">
+        <div>
+            <p class="page-kicker">Accès</p>
+            <h1>{% if selected_activity %}Équipe de {{ selected_activity.name }}{% else %}Comptes et accès{% endif %}</h1>
+            <p class="text-muted">{{ memberships|length }} accès actif{% if memberships|length != 1 %}s{% endif %}</p>
+        </div>
+        <a class="btn action-link" href="{% if selected_activity %}{% url 'accounts:team_create_activity' activity_slug=selected_activity.slug %}{% else %}{% url 'accounts:team_create_global' %}{% endif %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Créer un accès</a>
+    </div>
+    {% if is_global and activities|length > 1 %}
+    <nav class="activity-tabs" aria-label="Filtrer par activité">
+        <a href="{% url 'accounts:team_global' %}" {% if not selected_activity %}aria-current="page"{% endif %}>Toutes</a>
+        {% for activity in activities %}
+        <a href="{% url 'accounts:team_activity' activity_slug=activity.slug %}" {% if selected_activity.pk == activity.pk %}aria-current="page"{% endif %}>{{ activity.name }}</a>
+        {% endfor %}
+    </nav>
+    {% endif %}
+    <ul class="team-list" aria-label="Accès actifs">
+        {% for membership in memberships %}
+        <li class="team-card">
+            <div class="team-card__identity">
+                <h2>{{ membership.user.get_full_name|default:membership.user.username }}</h2>
+                <p class="team-card__username">{{ membership.user.username }}</p>
+            </div>
+            <div class="team-card__details">
+                <span class="team-role">{{ membership.get_role_display }}</span>
+                <span class="team-activity">{{ membership.activity.name|default:"Toutes les activités" }}</span>
+            </div>
+            <div class="team-card__actions">
+                {% if membership.user_id != request.user.pk %}
+                <a class="btn btn-secondary btn-sm action-link" href="{% url 'accounts:team_edit' membership.pk %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>Modifier</a>
+                <form method="post" action="{% if is_global %}{% url 'accounts:account_deactivate' membership.user_id %}{% else %}{% url 'accounts:team_deactivate' membership.pk %}{% endif %}">
+                    {% csrf_token %}<button class="btn btn-outline-danger btn-sm action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-cancel"></use></svg>{% if is_global %}Désactiver le compte{% else %}Désactiver l’accès{% endif %}</button>
+                </form>
+                {% else %}
+                <span class="team-card__self">Votre compte</span>
+                {% endif %}
+            </div>
+        </li>
+        {% empty %}
+        <li class="empty-state">Aucun accès actif{% if selected_activity %} pour cette activité{% endif %}.</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}

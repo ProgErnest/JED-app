@@ -3,7 +3,7 @@ Tests persistants JED-07 — module des ventes.
 
 Couvre :
 - ``create_sale`` (service central) : snapshots prix/coût, mouvements stock,
-  rollback transactionnel, services (coût = 0), stock négatif.
+    rollback transactionnel, services (coût = 0), stock insuffisant.
 - ``SaleLineForm`` / ``SaleLineFormSet`` : validation, lignes vides,
   produits+services simultanés, quantité.
 - Vues (``SaleListView``, ``SaleCreateView``, ``SaleDetailView``) : flux web,
@@ -24,6 +24,7 @@ from apps.activities.models import Activity
 from apps.accounts.models import ActivityMembership, Role
 from apps.catalog.models import Product, Service
 from apps.inventory.models import StockMovement
+from apps.inventory.services import record_stock_movement
 
 from ..models import Sale, SaleCancellation, SaleLine
 from ..forms import SaleLineForm, SaleLineFormSet
@@ -143,20 +144,105 @@ class CreateSaleServiceTest(TestCase):
         with self.assertRaises(ValueError):
             create_sale(self.activity, self.user, [{"item": self.product, "quantity": -1}])
 
-    def test_create_sale_allows_negative_stock(self):
-        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 150}])
-        self.product.refresh_from_db()
-        self.assertEqual(self.product.stock_quantity, -50)
-        self.assertFalse(sale.lines.first().margin_reliable)
-        self.assertTrue(sale.pk)
+    def test_create_sale_rejects_quantity_above_stock_without_changes(self):
+        with self.assertRaisesRegex(ValidationError, "Stock insuffisant"):
+            create_sale(self.activity, self.user, [{"item": self.product, "quantity": 150}])
 
-    def test_create_sale_marking_stock_zero_has_unreliable_margin(self):
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 100)
+        self.assertEqual(Sale.objects.count(), 0)
+        self.assertEqual(StockMovement.objects.count(), 0)
+
+    def test_create_sale_consuming_last_unit_keeps_margin_reliable(self):
         self.product.stock_quantity = 1
         self.product.save(update_fields=["stock_quantity"])
 
         sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 1}])
 
-        self.assertFalse(sale.lines.first().margin_reliable)
+        line = sale.lines.first()
+        self.assertTrue(line.margin_reliable)
+        self.assertEqual(line.cost, Decimal("1.00"))
+        self.assertEqual(line.margin, Decimal("1.50"))
+
+    def test_weighted_average_cost_and_sale_margin_match_audit_example(self):
+        self.product.stock_quantity = 0
+        self.product.average_cost = Decimal("0.00")
+        self.product.price = Decimal("2000.00")
+        self.product.save(update_fields=["stock_quantity", "average_cost", "price"])
+        for quantity, unit_cost in ((10, Decimal("1000.00")), (10, Decimal("1500.00"))):
+            record_stock_movement(
+                product=self.product,
+                movement_type=StockMovement.MovementType.ENTRY,
+                quantity=quantity,
+                unit_cost=unit_cost,
+                user=self.user,
+            )
+
+        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 5}])
+        line = sale.lines.get()
+
+        self.assertEqual(self.product.average_cost, Decimal("1250.00"))
+        self.assertEqual(sale.total, Decimal("10000.00"))
+        self.assertEqual(line.cost * line.quantity, Decimal("6250.00"))
+        self.assertEqual(line.margin, Decimal("3750.00"))
+        self.assertEqual(line.margin / sale.total * 100, Decimal("37.5000"))
+
+    def test_create_sale_rejects_combined_duplicate_lines_above_stock(self):
+        self.product.stock_quantity = 3
+        self.product.save(update_fields=["stock_quantity"])
+
+        with self.assertRaises(ValidationError):
+            create_sale(self.activity, self.user, [
+                {"item": self.product, "quantity": 2},
+                {"item": self.product, "quantity": 2},
+            ])
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 3)
+        self.assertEqual(Sale.objects.count(), 0)
+        self.assertEqual(StockMovement.objects.count(), 0)
+
+    def test_negative_margin_is_preserved(self):
+        self.product.stock_quantity = 1
+        self.product.price = Decimal("0.50")
+        self.product.save(update_fields=["stock_quantity", "price"])
+
+        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 1}])
+
+        line = sale.lines.first()
+        self.assertTrue(line.margin_reliable)
+        self.assertEqual(line.margin, Decimal("-0.50"))
+
+    def test_zero_cost_without_purchase_history_is_unknown(self):
+        self.product.stock_quantity = 2
+        self.product.average_cost = Decimal("0.00")
+        self.product.save(update_fields=["stock_quantity", "average_cost"])
+
+        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 1}])
+
+        line = sale.lines.first()
+        self.assertIsNone(line.cost)
+        self.assertIsNone(line.margin)
+        self.assertFalse(line.margin_reliable)
+
+    def test_zero_average_cost_with_positive_purchase_history_is_unknown(self):
+        self.product.average_cost = Decimal("0.00")
+        self.product.save(update_fields=["average_cost"])
+        StockMovement.objects.create(
+            product=self.product,
+            movement_type=StockMovement.MovementType.ENTRY,
+            quantity=1,
+            unit_cost=Decimal("1.00"),
+            user=self.user,
+            activity=self.activity,
+        )
+
+        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 1}])
+
+        line = sale.lines.get()
+        self.assertIsNone(line.cost)
+        self.assertIsNone(line.margin)
+        self.assertFalse(line.margin_reliable)
 
     def test_create_sale_rejects_item_from_another_activity(self):
         other_activity = Activity.objects.create(name="Salon", slug="salon-other")
@@ -307,6 +393,33 @@ class SaleLineFormTest(TestCase):
         )
         self.assertTrue(form.is_valid(), form.errors)
 
+    def test_form_does_not_offer_product_with_zero_stock(self):
+        unavailable = Product.objects.create(
+            activity=self.activity,
+            name="Épuisé",
+            slug="epuise-t",
+            unit="pièce",
+            price=Decimal("1.00"),
+            stock_quantity=0,
+        )
+
+        form = SaleLineForm(activity=self.activity)
+
+        self.assertNotIn(unavailable, form.fields["product"].queryset)
+        self.assertNotIn(f"product:{unavailable.pk}", [value for value, _ in form.fields["item"].choices])
+
+    def test_form_rejects_quantity_above_available_stock(self):
+        self.product.stock_quantity = 1
+        self.product.save(update_fields=["stock_quantity"])
+
+        form = SaleLineForm(
+            data={"item": f"product:{self.product.pk}", "quantity": 2},
+            activity=self.activity,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("Stock insuffisant", str(form.errors))
+
     def test_form_accepts_service(self):
         form = SaleLineForm(
             data={"product": "", "service": self.service.pk, "quantity": 1},
@@ -397,7 +510,12 @@ class SaleViewsTest(TestCase):
         url = reverse("sales:sale_list", kwargs={"activity_slug": self.activity.slug})
         self.assertEqual(self.client.get(url).status_code, 200)
         add_url = reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug})
-        self.assertEqual(self.client.get(add_url).status_code, 200)
+        response = self.client.get(add_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Produit ou prestation")
+        self.assertContains(response, "stock 100")
+        self.assertContains(response, "sale-stock-data")
+        self.assertContains(response, "Ajouter un article")
 
     def test_global_user_can_create_sale(self):
         self.client.force_login(self.global_user)
@@ -424,6 +542,46 @@ class SaleViewsTest(TestCase):
         r = self.client.post(add_url, self._post_data(service=self.service, qty=1))
         self.assertEqual(r.status_code, 302)
         self.assertEqual(Sale.objects.count(), 1)
+
+    def test_employee_can_create_sale_with_single_item_selector(self):
+        self.client.force_login(self.employee)
+        response = self.client.post(
+            reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug}),
+            {
+                "form-TOTAL_FORMS": "1",
+                "form-INITIAL_FORMS": "0",
+                "form-0-item": f"product:{self.product.pk}",
+                "form-0-quantity": "2",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        sale = Sale.objects.get()
+        self.assertEqual(sale.total, Decimal("5.00"))
+        self.assertEqual(sale.lines.get().product, self.product)
+
+    def test_single_item_selector_rejects_product_from_another_activity(self):
+        self.client.force_login(self.employee)
+        other_product = Product.objects.create(
+            activity=self.other_activity,
+            name="Produit privé",
+            slug="produit-prive",
+            unit="pièce",
+            price=Decimal("20.00"),
+            stock_quantity=5,
+            average_cost=Decimal("10.00"),
+        )
+        response = self.client.post(
+            reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug}),
+            {
+                "form-TOTAL_FORMS": "1",
+                "form-INITIAL_FORMS": "0",
+                "form-0-item": f"product:{other_product.pk}",
+                "form-0-quantity": "1",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Sale.objects.count(), 0)
+        self.assertContains(response, "Choisir un article", status_code=200)
 
     def test_employee_sale_list_only_contains_own_sales(self):
         create_sale(self.activity, self.global_user, [
@@ -513,23 +671,23 @@ class SaleViewsTest(TestCase):
                              kwargs={"activity_slug": self.activity.slug, "pk": sale.pk})
         r = self.client.get(detail_url)
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "5,00 €")
-        self.assertContains(r, "3,00 €")
+        self.assertContains(r, "5,00 FCFA")
+        self.assertContains(r, "3,00 FCFA")
 
-    def test_detail_view_labels_margin_unreliable_at_negative_stock(self):
+    def test_detail_view_rejects_sale_when_stock_is_zero(self):
         self.product.stock_quantity = 0
         self.product.save(update_fields=["stock_quantity"])
-        sale = create_sale(self.activity, self.global_user, [
-            {"item": self.product, "quantity": 1}
-        ])
         self.client.force_login(self.global_user)
 
-        response = self.client.get(
-            reverse("sales:sale_detail", kwargs={"activity_slug": self.activity.slug, "pk": sale.pk})
+        response = self.client.post(
+            reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug}),
+            self._post_data(product=self.product, qty=1),
         )
 
-        self.assertContains(response, "Non fiable")
-        self.assertNotContains(response, "1,50 €")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Sale.objects.count(), 0)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 0)
 
     def test_detail_view_403_for_other_activity_employee(self):
         sale = create_sale(self.activity, self.global_user, [

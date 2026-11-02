@@ -1,57 +1,59 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block title %}Dépenses{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Dépenses</h1>
-    <a href="{% url 'expenses:expense-create' %}?activity={{ activity.slug }}" class="btn btn-primary">Nouvelle dépense</a>
+<div class="page-shell">
+  <div class="page-heading">
+    <div>
+      <p class="page-kicker">Dépenses</p>
+      <h1>Suivi des dépenses</h1>
+    </div>
+    <a href="{% url 'expenses:expense-create' %}?activity={{ activity.slug }}" class="btn btn-primary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Nouvelle dépense</a>
   </div>
 
   {% if messages %}
     {% for message in messages %}
-      <div class="alert alert-success">{{ message }}</div>
+      <div class="flash success">{{ message }}</div>
     {% endfor %}
   {% endif %}
 
-  <div class="card shadow-sm">
-    <div class="card-body">
-      {% if expenses %}
-        <div class="table-responsive">
-          <table class="table table-striped align-middle">
-            <thead>
+  <div class="dashboard-section">
+    {% if expenses %}
+      <div class="table-responsive mobile-list" role="region" aria-label="Liste des dépenses" tabindex="0">
+        <table class="table table-striped align-middle">
+          <thead>
+            <tr>
+              <th>Catégorie</th>
+              <th>Montant</th>
+              <th>Créée par</th>
+              <th>Statut</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for expense in expenses %}
               <tr>
-                <th>Catégorie</th>
-                <th>Montant</th>
-                <th>Créée par</th>
-                <th>Statut</th>
-                <th class="text-end">Actions</th>
+                <td data-label="Catégorie">{{ expense.category.name }}</td>
+                <td data-label="Montant">{{ expense.amount }} FCFA</td>
+                <td data-label="Créée par">{{ expense.user.username }}</td>
+                <td data-label="Statut">{% if expense.is_canceled %}Annulée{% else %}Active{% endif %}</td>
+                <td class="actions">
+                  <a href="{% url 'expenses:expense-detail' expense.pk %}?activity={{ activity.slug }}" class="btn btn-sm btn-outline-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-view"></use></svg>Voir</a>
+                  {% if not expense.is_canceled %}
+                    <a href="{% url 'expenses:expense-edit' expense.pk %}?activity={{ activity.slug }}" class="btn btn-sm btn-outline-primary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>Corriger</a>
+                    <a href="{% url 'expenses:expense-cancel' expense.pk %}?activity={{ activity.slug }}" class="btn btn-sm btn-outline-danger action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-cancel"></use></svg>Annuler</a>
+                  {% endif %}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {% for expense in expenses %}
-                <tr>
-                  <td>{{ expense.category.name }}</td>
-                  <td>{{ expense.amount }} €</td>
-                  <td>{{ expense.user.username }}</td>
-                  <td>{% if expense.is_canceled %}Annulée{% else %}Active{% endif %}</td>
-                  <td class="text-end">
-                    <a href="{% url 'expenses:expense-detail' expense.pk %}?activity={{ activity.slug }}" class="btn btn-sm btn-outline-secondary">Voir</a>
-                    {% if not expense.is_canceled %}
-                      <a href="{% url 'expenses:expense-edit' expense.pk %}?activity={{ activity.slug }}" class="btn btn-sm btn-outline-primary">Corriger</a>
-                      <a href="{% url 'expenses:expense-cancel' expense.pk %}?activity={{ activity.slug }}" class="btn btn-sm btn-outline-danger">Annuler</a>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="mb-0 text-muted">Aucune dépense enregistrée pour cette activité.</p>
-      {% endif %}
-    </div>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state mb-0">Aucune dépense enregistrée pour cette activité.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

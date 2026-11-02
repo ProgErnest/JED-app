@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from django.db import transaction
 from django.core.exceptions import ValidationError
+from django.db import transaction
 
 from apps.accounts.permissions import user_has_activity_access, user_is_employee_in_activity
 from apps.catalog.models import Product, Service
@@ -41,53 +41,97 @@ def create_sale(activity, user, lines_data):
       n'a aucune sortie de stock (coût = 0).
     - Une panne sur n'importe quelle ligne (ou mouvement de stock) annule
       l'ensemble du ticket (rollback transactionnel).
-    - Le stock peut devenir négatif : la marge est alors signalée comme
-      peu fiable (décision A4).
+        - Les quantités vendues ne peuvent pas dépasser le stock disponible.
+        - Le coût est snapshoté avant la sortie; il est ``None`` si le coût est
+            inconnu, et ``margin_reliable`` indique si le coût est exploitable.
 
     Retourne le ``Sale`` enregistré.
     """
     if not lines_data:
         raise ValueError("Un ticket de caisse doit contenir au moins une ligne.")
 
+    normalized_lines = []
+    requested_quantities = {}
+    for data in lines_data:
+        item = data["item"]
+        quantity = int(data["quantity"])
+        if quantity <= 0:
+            raise ValueError("La quantité d'une ligne doit être positive.")
+        if isinstance(item, Product):
+            if item.activity_id != activity.pk:
+                raise ValueError("Le produit doit appartenir à l'activité de la vente.")
+            requested_quantities[item.pk] = requested_quantities.get(item.pk, 0) + quantity
+        elif isinstance(item, Service):
+            if item.activity_id != activity.pk:
+                raise ValueError("La prestation doit appartenir à l'activité de la vente.")
+        else:
+            raise ValueError("L'élément d'une ligne doit être un Product ou un Service.")
+        normalized_lines.append((item, quantity))
+
     with transaction.atomic():
+        products = {
+            product.pk: product
+            for product in Product.objects.select_for_update()
+            .filter(pk__in=requested_quantities)
+            .order_by("pk")
+        }
+        if len(products) != len(requested_quantities):
+            raise ValidationError("Un produit de la vente n'est plus disponible.")
+
+        for product_id, requested_quantity in requested_quantities.items():
+            product = products[product_id]
+            if product.stock_quantity < requested_quantity:
+                raise ValidationError(
+                    f"Stock insuffisant pour {product.name} : "
+                    f"{product.stock_quantity} disponible(s), "
+                    f"{requested_quantity} demandé(s)."
+                )
+
+        cost_history = StockMovement.objects.filter(
+                product_id__in=requested_quantities,
+                movement_type=StockMovement.MovementType.ENTRY,
+                unit_cost__isnull=False,
+            ).values_list("product_id", "unit_cost")
+        zero_cost_history_ids = {
+            product_id for product_id, unit_cost in cost_history if unit_cost == 0
+        }
+        positive_cost_history_ids = {
+            product_id for product_id, unit_cost in cost_history if unit_cost > 0
+        }
+        cost_snapshots = {}
+        for product_id, product in products.items():
+            has_known_cost = product.average_cost > 0 or (
+                product_id in zero_cost_history_ids
+                and product_id not in positive_cost_history_ids
+            )
+            cost_snapshots[product_id] = (
+                product.average_cost if has_known_cost else None,
+                product.stock_quantity > 0 and has_known_cost,
+            )
+
         sale = Sale.objects.create(activity=activity, user=user, total=Decimal(0))
         total = Decimal(0)
 
-        for data in lines_data:
-            item = data["item"]
-            quantity = int(data["quantity"])
-            if quantity <= 0:
-                raise ValueError("La quantité d'une ligne doit être positive.")
-
+        for item, quantity in normalized_lines:
             if isinstance(item, Product):
-                if item.activity_id != activity.pk:
-                    raise ValueError("Le produit doit appartenir à l'activité de la vente.")
-                unit_price = item.price  # snapshot prix de vente
-                cost = item.average_cost  # snapshot coût moyen
-                # Sortie de stock centralisée (jamais directement).
+                product = products[item.pk]
+                unit_price = product.price
+                cost, margin_reliable = cost_snapshots[product.pk]
                 inventory_services.record_stock_movement(
-                    product=item,
+                    product=product,
                     movement_type=StockMovement.MovementType.EXIT,
                     quantity=quantity,
                     user=user,
                     reason="Vente",
                     activity=activity,
                 )
-                product = item
                 service = None
-                margin_reliable = item.stock_quantity > 0
-            elif isinstance(item, Service):
-                if item.activity_id != activity.pk:
-                    raise ValueError("La prestation doit appartenir à l'activité de la vente.")
-                unit_price = item.price
-                cost = Decimal(0)  # prestation : pas de stock, pas de coût
-                margin_reliable = True
+            else:
                 product = None
                 service = item
-            else:
-                raise ValueError(
-                    "L'élément d'une ligne doit être un Product ou un Service."
-                )
+                unit_price = item.price
+                cost = Decimal(0)
+                margin_reliable = True
 
             line_total = unit_price * quantity
             SaleLine.objects.create(

@@ -91,8 +91,10 @@ class SaleLine(models.Model):
         "coût (snapshot)",
         max_digits=10,
         decimal_places=2,
-        default=Decimal(0),
-        help_text="Coût moyen du produit au moment de la vente, ou 0 pour un service.",
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Coût moyen connu au moment de la vente; vide si le coût est inconnu.",
     )
     margin_reliable = models.BooleanField(
         "marge fiable",
@@ -122,8 +124,10 @@ class SaleLine(models.Model):
         return str(item) if item else "—"
 
     @property
-    def margin(self) -> Decimal:
-        """Marge brute de la ligne (prix - coût) × quantité."""
+    def margin(self) -> Decimal | None:
+        """Marge brute de la ligne, ou None si son coût est inconnu."""
+        if self.cost is None:
+            return None
         return (self.unit_price - self.cost) * self.quantity
 
     def clean(self) -> None:

@@ -3,53 +3,42 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ title|default:"Catalogue" }} — JED</title>
-    <style>
-        * { box-sizing: border-box; }
-        body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 1rem; line-height: 1.5; }
-        header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid #ccc; }
-        h1 { font-size: 1.25rem; margin: 0; }
-        a { color: #0066cc; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .btn { display: inline-block; padding: 0.4rem 0.9rem; background: #0066cc; color: #fff; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
-        .btn:hover { background: #0052a3; }
-        .btn-secondary { background: #6c757d; }
-        .btn-secondary:hover { background: #5a6268; }
-        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-        th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid #ddd; font-size: 0.95rem; }
-        th { background: #f5f5f5; }
-        .actions { white-space: nowrap; }
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; margin-bottom: 0.3rem; font-weight: 600; font-size: 0.9rem; }
-        input[type="text"], input[type="number"], input[type="url"], textarea, select { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
-        textarea { min-height: 80px; resize: vertical; }
-        input[type="checkbox"] { width: auto; margin-right: 0.4rem; }
-        .form-row { display: flex; gap: 1rem; flex-wrap: wrap; }
-        .form-row > .form-group { flex: 1 1 200px; }
-        button[type="submit"] { padding: 0.55rem 1.2rem; background: #28a745; color: #fff; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; margin-top: 0.5rem; }
-        button[type="submit"]:hover { background: #218838; }
-        .cancel { margin-left: 0.75rem; }
-        .hint { font-size: 0.85rem; color: #666; margin-top: 0.25rem; }
-        .errorlist { color: #dc3545; list-style: none; padding: 0; margin: 0.3rem 0 0; }
-        .errorlist li { background: #f8d7da; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.4rem; }
-        .navbar a { margin-right: 1.25rem; font-weight: 600; }
-        .navbar a.active { text-decoration: underline; }
-        .flash { padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 4px; font-size: 0.95rem; }
-        .flash.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .flash.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-    </style>
+    <title>{% block title %}JED{% endblock %}</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/jed.css' %}">
 </head>
 <body>
-<header>
-    <nav class="navbar">
-        <a href="{% url 'accounts:home' %}">Accueil</a>
-        <a href="{% url 'catalog:home' %}" class="active">Catalogue</a>
-        {% if user.is_authenticated and activity %}
-        <a href="{% url 'accounts:activity_detail' activity_slug=activity.slug %}" style="margin-left:auto;">Activité : {{ activity.name }}</a>
+<header class="site-header">
+    <a class="brand" href="{% url 'analytics:home' %}" aria-label="JED, accueil"><span class="brand-mark">J</span>JED</a>
+    {% if user.is_authenticated %}
+    <nav class="site-nav" aria-label="Navigation principale">
+        {% if nav_employee_mode and nav_activity %}
+        <a href="{% url 'sales:sale_add' activity_slug=nav_activity.slug %}" aria-current="page"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-sale"></use></svg>Nouvelle vente</a>
+        {% else %}
+        <a href="{% url 'analytics:home' %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-dashboard"></use></svg>Indicateurs</a>
+        {% with current_activity=activity|default:nav_activity %}
+        {% if current_activity %}
+        <a href="{% url 'sales:sale_list' activity_slug=current_activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-sale"></use></svg>Ventes</a>
+        <a href="{% url 'inventory:movement_list' activity_slug=current_activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-stock"></use></svg>Stock</a>
+        <a href="{% url 'expenses:expense-list' %}?activity={{ current_activity.slug }}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-expense"></use></svg>Dépenses</a>
+        <a href="{% url 'catalog:product_list' activity_slug=current_activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-catalog"></use></svg>Catalogue</a>
+        {% endif %}
+        {% endwith %}
+        {% if nav_is_global %}
+        <a href="{% url 'accounts:team_global' %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-team"></use></svg>Comptes</a>
+        {% elif nav_can_manage_team %}
+        <a href="{% url 'accounts:team_global' %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-team"></use></svg>Équipe</a>
+        {% endif %}
         {% endif %}
     </nav>
+    <form method="post" action="{% url 'accounts:logout' %}" class="inline-form">
+        {% csrf_token %}
+        <button class="nav-logout" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-logout"></use></svg>Quitter</button>
+    </form>
+    {% endif %}
 </header>
-<main>
+<main class="site-main">
+    {% if activity %}<p class="activity-context">{{ activity.name }}</p>{% endif %}
     {% if messages %}
         {% for message in messages %}
         <div class="flash {{ message.tags }}">{{ message }}</div>

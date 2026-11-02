@@ -1,0 +1,12 @@
+{% extends "catalog/base.html" %}
+
+{% block title %}Choisir une activité — JED{% endblock %}
+
+{% block content %}
+<div class="page-heading"><h1>Choisir une activité</h1></div>
+<ul class="activity-list">
+    {% for activity in activities %}
+    <li><h2>{{ activity.name }}</h2><a class="btn" href="{% url 'accounts:team_activity' activity_slug=activity.slug %}">Gérer l’équipe</a></li>
+    {% endfor %}
+</ul>
+{% endblock %}

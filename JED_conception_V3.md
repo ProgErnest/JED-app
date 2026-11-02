@@ -11,6 +11,7 @@ Application de gestion des stocks, des ventes et du suivi de rentabilité — JE
 | Échéance | 3 novembre 2026 |
 | Budget maximal | 200 000 FCFA, hébergement et domaine compris |
 | Stack | Django + SQLite ; interface web responsive (téléphone et PC) |
+| Devise des opérations | FCFA (XAF) |
 | Point de départ | Développement from scratch (aucun code existant) |
 
 ---

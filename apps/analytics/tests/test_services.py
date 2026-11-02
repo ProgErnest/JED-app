@@ -6,9 +6,14 @@ from django.test import TestCase
 
 from apps.activities.models import Activity
 from apps.accounts.models import ActivityMembership, Role
+from apps.catalog.models import Product
 from apps.expenses.models import Expense, ExpenseCategory
 from apps.sales.models import Sale, SaleCancellation, SaleLine
-from apps.analytics.services import dashboard_metrics, global_activity_metrics
+from apps.analytics.services import (
+    activity_operational_details,
+    dashboard_metrics,
+    global_activity_metrics,
+)
 
 
 class DashboardMetricsTests(TestCase):
@@ -149,3 +154,105 @@ class DashboardMetricsTests(TestCase):
         metrics_by_slug = {row["activity"].slug: row for row in rows}
         self.assertEqual(metrics_by_slug[self.activity.slug]["revenue"], Decimal("15.00"))
         self.assertEqual(metrics_by_slug[second_activity.slug]["revenue"], Decimal("0.00"))
+
+    def test_product_profitability_includes_unsold_items_and_only_reliable_margin(self):
+        product = Product.objects.create(
+            activity=self.activity,
+            name="Produit marge négative",
+            slug="produit-marge-negative",
+            unit="pièce",
+            price=Decimal("5.00"),
+            stock_quantity=4,
+            average_cost=Decimal("8.00"),
+        )
+        unsold = Product.objects.create(
+            activity=self.activity,
+            name="Produit sans vente",
+            slug="produit-sans-vente",
+            unit="pièce",
+            price=Decimal("12.00"),
+            stock_quantity=7,
+        )
+        reliable_sale = self.create_sale(
+            self.employee,
+            Decimal("10.00"),
+            lines=[(Decimal("5.00"), Decimal("8.00"), 2, True)],
+        )
+        SaleLine.objects.filter(sale=reliable_sale).update(product=product)
+        unreliable_sale = self.create_sale(
+            self.employee,
+            Decimal("20.00"),
+            lines=[(Decimal("10.00"), Decimal("4.00"), 2, False)],
+        )
+        SaleLine.objects.filter(sale=unreliable_sale).update(product=product)
+        unknown_sale = self.create_sale(
+            self.employee,
+            Decimal("3.00"),
+            lines=[(Decimal("3.00"), None, 1, False)],
+        )
+        SaleLine.objects.filter(sale=unknown_sale).update(product=product)
+        canceled_sale = self.create_sale(
+            self.employee,
+            Decimal("100.00"),
+            canceled=True,
+            lines=[(Decimal("100.00"), Decimal("1.00"), 1, True)],
+        )
+        SaleLine.objects.filter(sale=canceled_sale).update(product=product)
+
+        details = activity_operational_details(
+            self.manager,
+            self.activity,
+            self.today,
+            self.today,
+        )
+        rows = {row["product"].pk: row for row in details["product_profitability"]}
+        product_row = rows[product.pk]
+
+        self.assertEqual(product_row["quantity"], 5)
+        self.assertEqual(product_row["revenue"], Decimal("33.00"))
+        self.assertEqual(product_row["reliable_cogs"], Decimal("16.00"))
+        self.assertEqual(product_row["reliable_margin"], Decimal("-6.00"))
+        self.assertEqual(product_row["reliable_margin_rate"], Decimal("-60.00"))
+        self.assertEqual(product_row["unknown_cost_line_count"], 1)
+        self.assertEqual(product_row["unreliable_cost_line_count"], 1)
+        self.assertEqual(product_row["last_sale_at"], unknown_sale.created_at)
+        self.assertEqual(rows[unsold.pk]["quantity"], 0)
+        self.assertIsNone(rows[unsold.pk]["reliable_margin"])
+
+    def test_employee_product_profitability_is_scoped_to_own_sales(self):
+        product = Product.objects.create(
+            activity=self.activity,
+            name="Produit partagé",
+            slug="produit-partage",
+            unit="pièce",
+            price=Decimal("10.00"),
+            stock_quantity=10,
+        )
+        own_sale = self.create_sale(
+            self.employee,
+            Decimal("10.00"),
+            lines=[(Decimal("10.00"), Decimal("4.00"), 1, True)],
+        )
+        SaleLine.objects.filter(sale=own_sale).update(product=product)
+        other_sale = self.create_sale(
+            self.manager,
+            Decimal("90.00"),
+            lines=[(Decimal("90.00"), Decimal("1.00"), 9, True)],
+        )
+        SaleLine.objects.filter(sale=other_sale).update(product=product)
+
+        details = activity_operational_details(
+            self.employee,
+            self.activity,
+            self.today,
+            self.today,
+        )
+
+        product_row = next(
+            row for row in details["product_profitability"]
+            if row["product"].pk == product.pk
+        )
+        self.assertEqual(product_row["quantity"], 1)
+        self.assertEqual(product_row["revenue"], Decimal("10.00"))
+        self.assertEqual(product_row["reliable_margin"], Decimal("6.00"))
+        self.assertEqual(product_row["last_sale_at"], own_sale.created_at)

@@ -12,6 +12,11 @@ urlpatterns = [
         name="movement_list",
     ),
     path(
+        "<slug:activity_slug>/stock/<slug:product_slug>/",
+        views.ProductStockDetailView.as_view(),
+        name="product_stock_detail",
+    ),
+    path(
         "<slug:activity_slug>/mouvements/entree/",
         views.StockEntryCreateView.as_view(),
         name="movement_entry_add",

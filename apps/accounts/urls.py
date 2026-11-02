@@ -20,6 +20,13 @@ urlpatterns = [
         name="logout",
     ),
     path("", views.home, name="home"),
+    path("equipe/", views.team_list, name="team_global"),
+    path("equipe/nouveau/", views.team_create, name="team_create_global"),
+    path("equipe/<int:membership_id>/modifier/", views.team_edit, name="team_edit"),
+    path("equipe/<int:membership_id>/desactiver/", views.team_deactivate, name="team_deactivate"),
+    path("equipe/compte/<int:user_id>/desactiver/", views.account_deactivate, name="account_deactivate"),
+    path("activite/<slug:activity_slug>/equipe/", views.team_list, name="team_activity"),
+    path("activite/<slug:activity_slug>/equipe/nouveau/", views.team_create, name="team_create_activity"),
     path(
         "activite/<slug:activity_slug>/",
         views.activity_detail,

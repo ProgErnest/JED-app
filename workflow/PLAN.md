@@ -20,7 +20,7 @@ Les fiches ci-dessous découpent les phases du document de conception en changem
 - **Fichiers/modèles visés** : `apps/accounts/`, `apps/activities/`, `User`, `Activity`, `ActivityMembership` (ou regroupement cohérent documenté).
 - **Règles** : un gérant global voit les trois activités; rôles d'activité sont limités à leur activité. La gestion des comptes par un responsable dépend de A2.
 - **Acceptation** : migrations et données initiales reproductibles; rattachements explicites; pas d'accès implicite à une activité.
-- **Blocage métier** : A2 bloque la création/désactivation des comptes par le responsable, pas le socle de comptes.
+- **Décision métier** : A2 est tranchée; le responsable peut gérer les accès de son activité. La désactivation complète du compte est réservée au gérant global.
 - **Commit suggéré** : `feat: ajoute les comptes et activités`
 
 ### JED-03 — Autorisations et périmètre des données

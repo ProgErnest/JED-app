@@ -1,44 +1,117 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block title %}Indicateurs globaux{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <h1>Indicateurs par activité</h1>
-  <form method="get" class="row g-2 align-items-end mb-4">
-    <div class="col-12 col-sm-auto">
+<div class="page-shell">
+  <div class="page-heading">
+    <div>
+      <p class="page-kicker">Pilotage</p>
+      <h1>Vue globale</h1>
+    </div>
+  </div>
+  <section aria-labelledby="today-heading" class="dashboard-section">
+    <div class="section-heading">
+      <div>
+        <h2 id="today-heading">Aujourd’hui</h2>
+        <p class="text-muted">{{ today_date|date:"l j F Y" }}</p>
+      </div>
+    </div>
+    <dl class="metric-grid">
+      <div class="metric-card" data-tone="green"><dt>Ventes enregistrées</dt><dd>{{ today_totals.revenue|floatformat:2 }} FCFA</dd><small>{{ today_totals.sale_count }} tickets actifs</small><span class="metric-status">Revenus</span></div>
+      <div class="metric-card" data-tone="amber"><dt>Dépenses déclarées</dt><dd>{{ today_totals.expenses|floatformat:2 }} FCFA</dd><small>{{ today_totals.expense_count }} dépenses actives</small><span class="metric-status">Charges</span></div>
+      <div class="metric-card" data-tone="navy"><dt>Achats de stock</dt><dd>{{ today_totals.stock_purchases|floatformat:2 }} FCFA</dd><small>{{ today_totals.stock_entry_count }} approvisionnements</small><span class="metric-status">Logistique</span></div>
+      <div class="metric-card" data-tone="red"><dt>Ventes moins dépenses déclarées</dt><dd>{{ today_totals.reported_balance|floatformat:2 }} FCFA</dd><small>Solde indicatif, pas un bénéfice comptable</small><span class="metric-status">Indicatif</span></div>
+    </dl>
+  </section>
+
+  <section aria-labelledby="period-heading" class="dashboard-section">
+  <div class="section-heading"><h2 id="period-heading">Résultats par activité</h2></div>
+  <form method="get" class="row align-items-end mb-4 inline-form period-filter">
+    <div class="col-12 col-sm-auto form-group">
       <label class="form-label" for="start">Du</label>
       <input class="form-control" type="date" id="start" name="start" value="{{ start_date|date:'Y-m-d' }}" required>
     </div>
-    <div class="col-12 col-sm-auto">
+    <div class="col-12 col-sm-auto form-group">
       <label class="form-label" for="end">Au</label>
       <input class="form-control" type="date" id="end" name="end" value="{{ end_date|date:'Y-m-d' }}" required>
     </div>
-    <div class="col-12 col-sm-auto"><button class="btn btn-primary" type="submit">Appliquer</button></div>
+    <div class="col-12 col-sm-auto"><button class="btn btn-primary action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-filter"></use></svg>Afficher</button></div>
   </form>
 
-  <div class="table-responsive">
+  <p class="period-caption">Du {{ start_date|date:"d/m/Y" }} au {{ end_date|date:"d/m/Y" }}</p>
+
+  <div class="table-responsive mobile-list" role="region" aria-label="Résultats financiers par activité" tabindex="0">
     <table class="table table-striped align-middle">
-      <thead><tr><th>Activité</th><th>Ventes</th><th>Tickets</th><th>Dépenses déclarées</th><th>Marge brute estimée</th><th>Solde après dépenses</th></tr></thead>
+      <thead><tr><th>Activité</th><th>Ventes</th><th>Tickets</th><th>Dépenses déclarées</th><th>Achats de stock</th><th>Marge brute estimée</th><th>Après dépenses déclarées</th></tr></thead>
       <tbody>
         {% for row in rows %}
           <tr>
             <th scope="row"><a href="{% url 'analytics:activity-dashboard' row.activity.slug %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.activity.name }}</a></th>
-            <td>{{ row.revenue|floatformat:2 }} €</td>
-            <td>{{ row.sale_count }}</td>
-            <td>{{ row.expenses|floatformat:2 }} € ({{ row.expense_count }})</td>
-            <td>{{ row.estimated_margin|floatformat:2 }} €</td>
-            <td>{{ row.reported_balance|floatformat:2 }} €</td>
+            <td data-label="Ventes">{{ row.revenue|floatformat:2 }} FCFA</td>
+            <td data-label="Tickets">{{ row.sale_count }}</td>
+            <td data-label="Dépenses déclarées">{{ row.expenses|floatformat:2 }} FCFA ({{ row.expense_count }})</td>
+            <td data-label="Achats de stock">{{ row.stock_purchases|floatformat:2 }} FCFA</td>
+            <td data-label="Marge estimée">{{ row.estimated_margin|floatformat:2 }} FCFA</td>
+            <td data-label="Après dépenses">{{ row.reported_balance|floatformat:2 }} FCFA</td>
           </tr>
         {% empty %}
-          <tr><td colspan="6" class="text-muted">Aucune activité active.</td></tr>
+          <tr><td colspan="7" class="text-muted">Aucune activité active.</td></tr>
         {% endfor %}
       </tbody>
       {% if rows %}
-      <tfoot><tr class="fw-bold"><th>Total</th><td>{{ totals.revenue|floatformat:2 }} €</td><td>—</td><td>{{ totals.expenses|floatformat:2 }} €</td><td>{{ totals.estimated_margin|floatformat:2 }} €</td><td>{{ totals.reported_balance|floatformat:2 }} €</td></tr></tfoot>
+      <tfoot><tr class="fw-bold"><th>Total</th><td data-label="Ventes">{{ totals.revenue|floatformat:2 }} FCFA</td><td data-label="Tickets">—</td><td data-label="Dépenses">{{ totals.expenses|floatformat:2 }} FCFA</td><td data-label="Achats de stock">{{ totals.stock_purchases|floatformat:2 }} FCFA</td><td data-label="Marge estimée">{{ totals.estimated_margin|floatformat:2 }} FCFA</td><td data-label="Après dépenses">{{ totals.reported_balance|floatformat:2 }} FCFA</td></tr></tfoot>
       {% endif %}
     </table>
   </div>
-  <p class="small text-muted">Marge brute estimée à partir des lignes fiables. Le solde compare les ventes et les dépenses déclarées et ne constitue pas un bénéfice net comptable.</p>
+  <p class="small text-muted">La marge est estimée à partir des coûts fiables enregistrés. Le dernier montant compare ventes et dépenses déclarées uniquement; il ne constitue pas un bénéfice net comptable.</p>
+  </section>
+
+  <section aria-labelledby="employees-heading" class="dashboard-section">
+    <div class="section-heading"><h2 id="employees-heading">Activité des employés</h2></div>
+    <p class="small text-muted">Opérations enregistrées par personne du {{ start_date|date:"d/m/Y" }} au {{ end_date|date:"d/m/Y" }}.</p>
+    <div class="table-responsive mobile-list" role="region" aria-label="Activité par employé" tabindex="0">
+      <table>
+        <thead><tr><th>Employé</th><th>Activité</th><th>Ventes</th><th>Recettes</th><th>Dépenses déclarées</th><th>Achats de stock</th><th>Dernière opération</th></tr></thead>
+        <tbody>
+          {% for employee in employees %}
+          <tr>
+            <th scope="row">{{ employee.full_name }}</th>
+            <td data-label="Activité">{{ employee.activity }}</td>
+            <td data-label="Ventes">{{ employee.sale_count }}</td>
+            <td data-label="Recettes">{{ employee.revenue|floatformat:2 }} FCFA</td>
+            <td data-label="Dépenses déclarées">{{ employee.expenses|floatformat:2 }} FCFA ({{ employee.expense_count }})</td>
+            <td data-label="Achats de stock">{{ employee.stock_purchases|floatformat:2 }} FCFA</td>
+            <td data-label="Dernière opération"><time datetime="{{ employee.last_operation|date:'c' }}">{{ employee.last_operation|date:"d/m/Y H:i" }}</time></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="text-muted">Aucune opération enregistrée sur cette période.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="operations-heading" class="dashboard-section">
+    <div class="section-heading"><h2 id="operations-heading">Dernières opérations</h2></div>
+    <ol class="operation-list">
+      {% for operation in recent_operations %}
+      <li class="operation-row operation-{{ operation.kind }}">
+        <div class="operation-main">
+          {% if operation.url %}<a href="{{ operation.url }}"><strong>{{ operation.label }}</strong></a>{% else %}<strong>{{ operation.label }}</strong>{% endif %}
+          <span>{{ operation.activity.name }} · {{ operation.detail }}</span>
+        </div>
+        <div class="operation-meta">
+          <span>{{ operation.user.get_full_name|default:operation.user.username }}</span>
+          <time datetime="{{ operation.created_at|date:'c' }}">{{ operation.created_at|date:"d/m H:i" }}</time>
+        </div>
+        {% if operation.amount != None %}<strong class="operation-amount {% if operation.amount < 0 %}negative{% endif %}">{% if operation.amount > 0 %}+{% endif %}{{ operation.amount|floatformat:2 }} FCFA</strong>{% endif %}
+      </li>
+      {% empty %}
+      <li class="empty-state">Aucune opération enregistrée.</li>
+      {% endfor %}
+    </ol>
+  </section>
 </div>
 {% endblock %}

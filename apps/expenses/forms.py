@@ -18,6 +18,7 @@ class ExpenseForm(forms.ModelForm):
 
     def __init__(self, *args, activity=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["amount"].label = "Montant (FCFA)"
         self.activity = activity
         if activity is not None:
             self.fields["category"].queryset = ExpenseCategory.objects.filter(

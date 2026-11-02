@@ -1,45 +1,199 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block title %}Indicateurs · {{ activity.name }}{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+<div class="page-shell">
+  <div class="page-heading">
     <div>
-      <h1>Indicateurs · {{ activity.name }}</h1>
+      <p class="page-kicker">Performance</p>
+      <h1>Indicateurs</h1>
       {% if metrics.employee_scope %}<p class="text-muted mb-0">Vos opérations uniquement</p>{% endif %}
     </div>
     {% if activities|length > 1 %}
-      <nav aria-label="Activités">
+      <nav aria-label="Activités" class="d-flex flex-wrap gap-2">
         {% for accessible_activity in activities %}
           <a class="btn btn-sm {% if accessible_activity.pk == activity.pk %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{% url 'analytics:activity-dashboard' accessible_activity.slug %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ accessible_activity.name }}</a>
         {% endfor %}
       </nav>
     {% endif %}
-  </header>
+  </div>
 
-  <form method="get" class="row g-2 align-items-end mb-4">
-    <div class="col-12 col-sm-auto">
+  <form method="get" class="period-filter inline-form">
+    <div class="form-group">
       <label class="form-label" for="start">Du</label>
       <input class="form-control" type="date" id="start" name="start" value="{{ start_date|date:'Y-m-d' }}" required>
     </div>
-    <div class="col-12 col-sm-auto">
+    <div class="form-group">
       <label class="form-label" for="end">Au</label>
       <input class="form-control" type="date" id="end" name="end" value="{{ end_date|date:'Y-m-d' }}" required>
     </div>
-    <div class="col-12 col-sm-auto"><button class="btn btn-primary" type="submit">Appliquer</button></div>
+    <div><button class="btn btn-primary action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-filter"></use></svg>Voir la période</button></div>
   </form>
 
-  <dl class="row g-3">
-    <div class="col-12 col-sm-6 col-xl-3"><div class="border rounded p-3 h-100"><dt>Ventes encaissées</dt><dd class="h3 mb-1">{{ metrics.revenue|floatformat:2 }} €</dd><small>{{ metrics.sale_count }} tickets non annulés</small></div></div>
-    <div class="col-12 col-sm-6 col-xl-3"><div class="border rounded p-3 h-100"><dt>Dépenses déclarées</dt><dd class="h3 mb-1">{{ metrics.expenses|floatformat:2 }} €</dd><small>{{ metrics.expense_count }} dépenses actives</small></div></div>
-    <div class="col-12 col-sm-6 col-xl-3"><div class="border rounded p-3 h-100"><dt>Marge brute estimée</dt><dd class="h3 mb-1">{{ metrics.estimated_margin|floatformat:2 }} €</dd><small>{{ metrics.reliable_margin_line_count }} lignes fiables</small></div></div>
-    <div class="col-12 col-sm-6 col-xl-3"><div class="border rounded p-3 h-100"><dt>Solde après dépenses déclarées</dt><dd class="h3 mb-1">{{ metrics.reported_balance|floatformat:2 }} €</dd><small>Ce n'est pas un bénéfice net comptable.</small></div></div>
+  <dl class="metric-grid">
+    <div class="metric-card" data-tone="green"><dt>Ventes encaissées</dt><dd>{{ metrics.revenue|floatformat:2 }} FCFA</dd><small>{{ metrics.sale_count }} tickets non annulés</small><span class="metric-status">Revenus</span></div>
+    <div class="metric-card" data-tone="amber"><dt>Dépenses déclarées</dt><dd>{{ metrics.expenses|floatformat:2 }} FCFA</dd><small>{{ metrics.expense_count }} dépenses actives</small><span class="metric-status">Charges</span></div>
+    <div class="metric-card" data-tone="navy"><dt>Marge brute estimée</dt><dd>{{ metrics.estimated_margin|floatformat:2 }} FCFA</dd><small>{{ metrics.reliable_margin_line_count }} lignes fiables</small><span class="metric-status">Estimation</span></div>
+    <div class="metric-card" data-tone="red"><dt>Solde après dépenses déclarées</dt><dd>{{ metrics.reported_balance|floatformat:2 }} FCFA</dd><small>Ce n'est pas un bénéfice net comptable.</small><span class="metric-status">Indicatif</span></div>
   </dl>
 
   {% if metrics.unreliable_line_count %}
     <div class="alert alert-warning mt-3" role="status">La marge estimée exclut {{ metrics.unreliable_line_count }} ligne(s) dont le coût n'est pas fiable.</div>
   {% endif %}
   <p class="small text-muted mt-3">La marge est une estimation basée sur les coûts enregistrés. Le solde compare les ventes et les dépenses déclarées uniquement, sans représenter un bénéfice net comptable.</p>
+
+  <section class="dashboard-section" aria-labelledby="activity-sales-heading">
+    <div class="section-heading"><h2 id="activity-sales-heading">Ventes détaillées</h2></div>
+    <div class="table-responsive mobile-list" role="region" aria-label="Ventes de la période" tabindex="0">
+      <table>
+        <thead><tr><th>Ticket</th><th>Date</th><th>Employé</th><th>Articles</th><th>Montant</th><th>Statut</th></tr></thead>
+        <tbody>
+          {% for sale in sales %}
+          <tr>
+            <th scope="row"><a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">#{{ sale.pk }}</a></th>
+            <td data-label="Date">{{ sale.created_at|date:"d/m/Y H:i" }}</td>
+            <td data-label="Employé">{{ sale.user.get_full_name|default:sale.user.username }}</td>
+            <td data-label="Articles">{% for line in sale.lines.all %}{{ line.item_display }} × {{ line.quantity }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
+            <td data-label="Montant">{{ sale.total|floatformat:2 }} FCFA</td>
+            <td data-label="Statut">{% if sale.is_canceled %}Annulée{% else %}Active{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-muted">Aucune vente sur cette période.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="dashboard-section" aria-labelledby="sales-items-heading">
+    <div class="section-heading"><h2 id="sales-items-heading">Articles vendus</h2></div>
+    <div class="table-responsive mobile-list" role="region" aria-label="Résumé des articles vendus" tabindex="0">
+      <table>
+        <thead><tr><th>Produit ou prestation</th><th>Quantité</th><th>Recettes</th></tr></thead>
+        <tbody>
+          {% for item in sales_by_item %}
+          <tr>
+            <th scope="row">{{ item.product__name|default:item.service__name }}</th>
+            <td data-label="Quantité">{{ item.quantity }}</td>
+            <td data-label="Recettes">{{ item.revenue|floatformat:2 }} FCFA</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" class="text-muted">Aucun article vendu sur cette période.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="dashboard-section" aria-labelledby="product-profitability-heading">
+    <div class="section-heading"><h2 id="product-profitability-heading">Rentabilité et rotation des produits</h2></div>
+    <p class="small text-muted">Le chiffre d’affaires inclut toutes les ventes actives de la période. Coût, marge et taux sont calculés uniquement sur les lignes dont le coût snapshot est fiable; les lignes inconnues ou non fiables sont indiquées séparément.</p>
+    <div class="table-responsive mobile-list" role="region" aria-label="Rentabilité et rotation des produits" tabindex="0">
+      <table>
+        <thead><tr><th>Produit</th><th>Stock actuel</th><th>Quantité vendue</th><th>Chiffre d’affaires</th><th>COGS fiable</th><th>Marge fiable</th><th>Taux fiable</th><th>Dernière vente</th><th>Coût à qualifier</th></tr></thead>
+        <tbody>
+          {% for row in product_profitability %}
+          <tr>
+            <th scope="row">{{ row.product.name }}</th>
+            <td data-label="Stock actuel">{{ row.product.stock_quantity }}</td>
+            <td data-label="Quantité vendue">{{ row.quantity }}</td>
+            <td data-label="Chiffre d’affaires">{{ row.revenue|floatformat:2 }} FCFA</td>
+            <td data-label="COGS fiable">{% if row.reliable_cogs != None %}{{ row.reliable_cogs|floatformat:2 }} FCFA{% else %}Non calculable{% endif %}</td>
+            <td data-label="Marge fiable">{% if row.reliable_margin != None %}{{ row.reliable_margin|floatformat:2 }} FCFA{% else %}Non calculable{% endif %}</td>
+            <td data-label="Taux fiable">{% if row.reliable_margin_rate != None %}{{ row.reliable_margin_rate|floatformat:2 }} %{% else %}—{% endif %}</td>
+            <td data-label="Dernière vente">{% if row.last_sale_at %}{{ row.last_sale_at|date:"d/m/Y" }}{% else %}Jamais{% endif %}</td>
+            <td data-label="Coût à qualifier">{{ row.unknown_cost_line_count }} inconnu · {{ row.unreliable_cost_line_count }} non fiable</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" class="text-muted">Aucun produit au catalogue pour cette activité.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="dashboard-section" aria-labelledby="expenses-heading">
+    <div class="section-heading"><h2 id="expenses-heading">Dépenses par catégorie</h2></div>
+    <div class="table-responsive mobile-list" role="region" aria-label="Totaux de dépenses par catégorie" tabindex="0">
+      <table>
+        <thead><tr><th>Catégorie</th><th>Nombre</th><th>Total déclaré</th></tr></thead>
+        <tbody>
+          {% for category in expenses_by_category %}
+          <tr><th scope="row">{{ category.category__name }}</th><td data-label="Nombre">{{ category.expense_count }}</td><td data-label="Total déclaré">{{ category.amount|floatformat:2 }} FCFA</td></tr>
+          {% empty %}
+          <tr><td colspan="3" class="text-muted">Aucune dépense active sur cette période.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="table-responsive mobile-list" role="region" aria-label="Dépenses de la période" tabindex="0">
+      <table>
+        <thead><tr><th>Date</th><th>Catégorie</th><th>Description</th><th>Employé</th><th>Montant</th><th>Statut</th></tr></thead>
+        <tbody>
+          {% for expense in expenses %}
+          <tr>
+            <td data-label="Date">{{ expense.created_at|date:"d/m/Y H:i" }}</td>
+            <td data-label="Catégorie">{{ expense.category.name }}</td>
+            <td data-label="Description">{{ expense.description|default:"—" }}</td>
+            <td data-label="Employé">{{ expense.user.get_full_name|default:expense.user.username }}</td>
+            <td data-label="Montant">{{ expense.amount|floatformat:2 }} FCFA</td>
+            <td data-label="Statut">{% if expense.is_canceled %}Annulée{% else %}Active{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-muted">Aucune dépense sur cette période.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="dashboard-section" aria-labelledby="expense-audit-heading">
+    <div class="section-heading"><h2 id="expense-audit-heading">Corrections et annulations de dépenses</h2></div>
+    <ol class="operation-list">
+      {% for event in expense_audits %}
+      <li class="operation-row operation-expense">
+        <div class="operation-main">
+          <strong>{{ event.get_action_display }} · {{ event.expense.category.name }}</strong>
+          <span>{{ event.reason|default:event.expense.description|default:"Aucun motif fourni" }}</span>
+        </div>
+        <div class="operation-meta">
+          <span>{{ event.user.get_full_name|default:event.user.username }}</span>
+          <time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:"d/m/Y H:i" }}</time>
+        </div>
+      </li>
+      {% empty %}
+      <li class="empty-state">Aucune correction ou annulation sur cette période.</li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section class="dashboard-section" aria-labelledby="stock-heading">
+    <div class="section-heading">
+      <h2 id="stock-heading">Mouvements de stock</h2>
+      <p class="period-caption">Achats de stock : {{ stock_purchase_total|floatformat:2 }} FCFA · {{ stock_purchase_count }} approvisionnements</p>
+    </div>
+    <div class="table-responsive mobile-list" role="region" aria-label="Mouvements de stock de la période" tabindex="0">
+      <table>
+        <thead><tr><th>Date</th><th>Produit</th><th>Type</th><th>Quantité</th><th>Coût unitaire</th><th>Employé</th><th>Motif</th></tr></thead>
+        <tbody>
+          {% for movement in movements %}
+          <tr>
+            <td data-label="Date">{{ movement.created_at|date:"d/m/Y H:i" }}</td>
+            <td data-label="Produit">{{ movement.product.name }}</td>
+            <td data-label="Type">{{ movement.get_movement_type_display }}</td>
+            <td data-label="Quantité">{{ movement.quantity }}</td>
+            <td data-label="Coût unitaire">{% if movement.unit_cost != None %}{{ movement.unit_cost|floatformat:2 }} FCFA{% else %}—{% endif %}</td>
+            <td data-label="Employé">{{ movement.user.get_full_name|default:movement.user.username }}</td>
+            <td data-label="Motif">{{ movement.reason|default:"—" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="text-muted">Aucun mouvement de stock sur cette période.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

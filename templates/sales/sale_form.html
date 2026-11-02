@@ -1,31 +1,109 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block content %}
-<h1>Nouveau ticket — {{ activity.name }}</h1>
-<form method="post" novalidate>
+<div class="page-heading">
+    <h1>Nouvelle vente</h1>
+</div>
+<form method="post" novalidate class="form-panel">
     {% csrf_token %}
     {{ formset.management_form }}
-    {{ formset.non_form_errors }}
-    <table style="width:100%; border-collapse:collapse;">
-        <thead>
-            <tr>
-                <th>Produit</th>
-                <th>Service</th>
-                <th class="text-end">Qté</th>
-            </tr>
-        </thead>
-        <tbody id="lines">
-            {% for form in formset %}
-            <tr class="line-row">
-                <td>{{ form.product }}</td>
-                <td>{{ form.service }}</td>
-                <td style="width:80px;">{{ form.quantity }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    <p><small>Les prix appliqués sont ceux en vigueur dans le catalogue au moment de la validation (figés dans le ticket).</small></p>
-    <button type="submit">Enregistrer le ticket</button>
-    <a href="{% url 'sales:sale_list' activity_slug=activity.slug %}" class="cancel btn btn-secondary">Annuler</a>
+    {% if formset.non_form_errors %}<div class="alert alert-danger" role="alert">{{ formset.non_form_errors }}</div>{% endif %}
+    <p class="sale-instruction">Choisissez l’article, vérifiez la quantité, puis enregistrez.</p>
+    <div id="lines" class="ticket-lines">
+        {% for form in formset %}
+        <fieldset class="ticket-line">
+            <legend class="visually-hidden">Ligne {{ forloop.counter }}</legend>
+            <div class="form-group item-field">
+                {{ form.item.label_tag }}
+                {{ form.item }}
+                {{ form.item.errors }}
+                {{ form.product }}
+                {{ form.service }}
+            </div>
+            <div class="form-group quantity-field">
+                {{ form.quantity.label_tag }}
+                {{ form.quantity }}
+                {{ form.quantity.errors }}
+            </div>
+            {{ form.non_field_errors }}
+        </fieldset>
+        {% endfor %}
+    </div>
+    {{ stock_by_product|json_script:"sale-stock-data" }}
+    <p id="stock-warning" class="alert alert-warning stock-warning" role="status" hidden></p>
+    <template id="empty-sale-line">
+        <fieldset class="ticket-line">
+            <legend class="visually-hidden">Nouvelle ligne</legend>
+            <div class="form-group item-field">
+                {{ formset.empty_form.item.label_tag }}
+                {{ formset.empty_form.item }}
+                {{ formset.empty_form.product }}
+                {{ formset.empty_form.service }}
+            </div>
+            <div class="form-group quantity-field">
+                {{ formset.empty_form.quantity.label_tag }}
+                {{ formset.empty_form.quantity }}
+            </div>
+        </fieldset>
+    </template>
+    <button class="btn btn-secondary add-line action-link" type="button" id="add-sale-line"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Ajouter un article</button>
+    <p class="ticket-note">Les prix du catalogue seront enregistrés sur le ticket et ne changeront pas ensuite.</p>
+    <div class="sale-actions">
+        <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-check"></use></svg>Enregistrer la vente</button>
+        <a href="{% url 'sales:sale_list' activity_slug=activity.slug %}" class="btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-history"></use></svg>Mes ventes</a>
+    </div>
 </form>
+<script>
+    const addLineButton = document.querySelector("#add-sale-line");
+    const lineContainer = document.querySelector("#lines");
+    const lineTemplate = document.querySelector("#empty-sale-line");
+    const totalForms = document.querySelector("#id_form-TOTAL_FORMS");
+    const stockWarning = document.querySelector("#stock-warning");
+    const stockByProduct = JSON.parse(document.querySelector("#sale-stock-data").textContent);
+
+    const updateStockWarning = () => {
+        const quantitiesByProduct = new Map();
+        lineContainer.querySelectorAll(".ticket-line").forEach((line) => {
+            const itemSelect = line.querySelector("select[name$='-item']");
+            const quantityInput = line.querySelector("input[name$='-quantity']");
+            if (!itemSelect.value.startsWith("product:")) return;
+            const productId = itemSelect.value.slice("product:".length);
+            quantitiesByProduct.set(
+                productId,
+                (quantitiesByProduct.get(productId) || 0) + Number(quantityInput.value || 0),
+            );
+        });
+        const warnings = [...quantitiesByProduct].flatMap(([productId, quantity]) => {
+            const available = stockByProduct[productId];
+            const productName = [...lineContainer.querySelectorAll("select[name$='-item']")]
+                .find((select) => select.value === `product:${productId}`)
+                ?.selectedOptions[0]?.textContent.split(" · ")[0] || "Article";
+            return quantity > available
+                ? [`${productName} : stock ${available}, quantité demandée ${quantity}. La vente reste possible, mais le stock deviendra négatif.`]
+                : [];
+        });
+        stockWarning.textContent = warnings.join(" ");
+        stockWarning.hidden = warnings.length === 0;
+    };
+
+    lineContainer.addEventListener("change", updateStockWarning);
+    lineContainer.addEventListener("input", updateStockWarning);
+
+    addLineButton.addEventListener("click", () => {
+        const index = Number(totalForms.value);
+        const line = lineTemplate.content.cloneNode(true);
+        line.querySelectorAll("input, select, label").forEach((element) => {
+            ["name", "id", "for"].forEach((attribute) => {
+                if (element.hasAttribute(attribute)) {
+                    element.setAttribute(attribute, element.getAttribute(attribute).replaceAll("__prefix__", index));
+                }
+            });
+        });
+        lineContainer.append(line);
+        totalForms.value = index + 1;
+        lineContainer.lastElementChild.querySelector("select").focus();
+        updateStockWarning();
+    });
+</script>
 {% endblock %}

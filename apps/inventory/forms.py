@@ -20,6 +20,7 @@ class StockEntryForm(forms.ModelForm):
 
     def __init__(self, *args, activity=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["unit_cost"].label = "Coût unitaire d'achat (FCFA)"
         if activity is not None:
             self.fields["product"].queryset = self.fields["product"].queryset.filter(
                 activity=activity

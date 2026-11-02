@@ -1,8 +1,10 @@
 {% extends "catalog/base.html" %}
+{% load static %}
 
 {% block content %}
-<h1>Annulations — {{ activity.name }}</h1>
+<div class="page-heading"><h1>Journal des annulations</h1></div>
 {% if cancellations %}
+<div class="table-responsive mobile-list" role="region" aria-label="Journal des annulations" tabindex="0">
 <table>
     <thead>
         <tr>
@@ -16,17 +18,18 @@
     <tbody>
         {% for cancellation in cancellations %}
         <tr>
-            <td>{{ cancellation.created_at|date:"d/m/Y H:i" }}</td>
-            <td><a href="{% url 'sales:sale_cancellation_detail' activity_slug=activity.slug pk=cancellation.pk %}">#{{ cancellation.sale_id }}</a></td>
-            <td>{{ cancellation.sale.user.get_full_name|default:cancellation.sale.user.username }}</td>
-            <td>{{ cancellation.user.get_full_name|default:cancellation.user.username }}</td>
-            <td>{{ cancellation.reason }}</td>
+            <td data-label="Date">{{ cancellation.created_at|date:"d/m/Y H:i" }}</td>
+            <td data-label="Ticket"><a class="action-link" href="{% url 'sales:sale_cancellation_detail' activity_slug=activity.slug pk=cancellation.pk %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-view"></use></svg>#{{ cancellation.sale_id }}</a></td>
+            <td data-label="Vendeur">{{ cancellation.sale.user.get_full_name|default:cancellation.sale.user.username }}</td>
+            <td data-label="Annulé par">{{ cancellation.user.get_full_name|default:cancellation.user.username }}</td>
+            <td data-label="Motif">{{ cancellation.reason }}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+ </div>
 {% else %}
-<p>Aucune annulation pour cette activité.</p>
+<p class="empty-state">Aucune vente annulée pour cette activité.</p>
 {% endif %}
 {% if is_paginated %}
 <div class="pagination">

@@ -186,5 +186,5 @@ class PriceHistory(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.item} — {self.price} € dès {self.starts_at:%d/%m/%Y}"
+        return f"{self.item} — {self.price} FCFA dès {self.starts_at:%d/%m/%Y}"
 
