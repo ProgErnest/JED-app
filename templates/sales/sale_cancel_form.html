@@ -2,17 +2,24 @@
 {% load static %}
 
 {% block content %}
-<div class="page-heading"><h1>Annuler la vente #{{ sale.pk }}</h1></div>
-<p class="ticket-note">La vente restera dans l’historique. Les produits vendus seront remis en stock avec une trace de l’opération.</p>
-<form method="post" class="form-panel">
-    {% csrf_token %}
-    {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
-    <div class="form-group">
-        {{ form.reason.label_tag }}
-        {{ form.reason }}
-        {{ form.reason.errors }}
-    </div>
-    <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-cancel"></use></svg>Confirmer l’annulation</button>
-    <a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}" class="cancel btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-back"></use></svg>Retour</a>
-</form>
+<div class="page-shell sale-cancel-page">
+    <a class="sale-receipt__back" href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">‹ Retour au ticket #{{ sale.pk }}</a>
+    <div class="page-heading"><div><p class="page-kicker">{{ activity.name }} · Ticket #{{ sale.pk }}</p><h1>Annuler cette vente</h1></div></div>
+    <div class="sale-cancel-summary"><div><span>Montant du ticket</span><strong>{{ sale.total|floatformat:"-2g" }} FCFA</strong></div><div><span>Articles</span><strong>{{ sale.lines.count }}</strong></div><div><span>Vendeur</span><strong>{{ sale.user.get_full_name|default:sale.user.username }}</strong></div></div>
+    <p class="sale-cancel-warning"><strong>Cette action ne peut pas être annulée.</strong> Le ticket restera dans l’historique et les produits vendus seront remis en stock. Une trace avec le motif sera conservée.</p>
+    <form method="post" class="form-panel sale-cancel-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="form-group">
+            {{ form.reason.label_tag }}
+            {{ form.reason }}
+            {{ form.reason.errors }}
+            <p class="hint">Ex. : erreur de saisie, client remboursé, ticket en double.</p>
+        </div>
+        <div class="sale-cancel-form__actions">
+            <button class="btn btn-outline-danger action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-cancel"></use></svg>Confirmer l’annulation</button>
+            <a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}" class="btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-back"></use></svg>Garder la vente</a>
+        </div>
+    </form>
+</div>
 {% endblock %}

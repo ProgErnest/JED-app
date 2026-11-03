@@ -1,63 +1,63 @@
 {% extends "catalog/base.html" %}
 {% load static %}
 
+{% block title %}Ventes — {{ activity.name }}{% endblock %}
+
 {% block content %}
-<div class="page-shell">
+<div class="page-shell sales-history">
     <div class="page-heading">
-        <div>
-            <p class="page-kicker">Ventes</p>
-            <h1>Historique des ventes</h1>
-        </div>
-        <div class="d-flex flex-wrap align-items-center gap-2">
+        <div><p class="page-kicker">{{ activity.name }} · Caisse</p><h1>Ventes</h1></div>
+        <div class="sales-history__actions">
             <a href="{% url 'sales:sale_add' activity_slug=activity.slug %}" class="btn action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Nouvelle vente</a>
-            <a class="btn btn-secondary action-link" href="{% url 'sales:sale_cancellation_list' activity_slug=activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-history"></use></svg>Journal des annulations</a>
+            <a class="btn btn-secondary action-link" href="{% url 'sales:sale_cancellation_list' activity_slug=activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-history"></use></svg>Annulations</a>
         </div>
     </div>
+    <form method="get" class="sales-history-filters" role="search">
+        <div class="sales-history-filters__search"><label for="sales-search">Ticket ou vendeur</label><input id="sales-search" type="search" name="q" value="{{ search_query }}" placeholder="Ex. 204 ou Amina"></div>
+        <div><label for="sales-status">Statut</label><select id="sales-status" name="status"><option value="all" {% if status_filter == "all" %}selected{% endif %}>Toutes les ventes</option><option value="active" {% if status_filter == "active" %}selected{% endif %}>Actives</option><option value="canceled" {% if status_filter == "canceled" %}selected{% endif %}>Annulées</option></select></div>
+        <div><label for="sales-from">Du</label><input id="sales-from" type="date" name="from" value="{{ date_from }}"></div>
+        <div><label for="sales-to">Au</label><input id="sales-to" type="date" name="to" value="{{ date_to }}"></div>
+        <button class="btn" type="submit">Filtrer</button>
+        {% if search_query or status_filter != "all" or date_from or date_to %}<a class="sales-history-filters__reset" href="{% url 'sales:sale_list' activity_slug=activity.slug %}">Effacer</a>{% endif %}
+    </form>
+    {% if date_error %}<p class="sale-filter-error" role="alert">{{ date_error }}</p>{% endif %}
 
     {% if sales %}
-    <div class="dashboard-section">
-        <div class="table-responsive mobile-list" role="region" aria-label="Liste des ventes" tabindex="0">
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Date</th>
-                    <th>Employé</th>
-                    <th class="text-end">Total</th>
-                    <th>Statut</th>
-                    <th></th>
-                </tr>
-            </thead>
+    <div class="sales-list-summary">{{ page_obj.paginator.count }} ticket{% if page_obj.paginator.count != 1 %}s{% endif %}</div>
+    <div class="sales-history-desktop" role="region" aria-label="Historique des ventes" tabindex="0">
+        <table class="sales-table">
+            <thead><tr><th>Ticket</th><th>Date</th><th>Vendeur</th><th class="text-end">Total</th><th>État</th><th></th></tr></thead>
             <tbody>
                 {% for sale in sales %}
                 <tr>
-                    <td data-label="Ticket">{{ sale.pk }}</td>
-                    <td data-label="Date">{{ sale.created_at|date:"d/m/y H:i" }}</td>
-                    <td data-label="Employé">{{ sale.user.get_full_name|default:sale.user.username }}</td>
-                    <td data-label="Total" class="text-end">{{ sale.total }} FCFA</td>
-                    <td data-label="Statut">{% if sale.is_canceled %}Annulé{% else %}Actif{% endif %}</td>
-                    <td class="actions">
-                        <a class="btn btn-secondary btn-sm action-link" href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-view"></use></svg>Détails</a>
-                    </td>
+                    <th scope="row"><a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">#{{ sale.pk }}</a></th>
+                    <td>{{ sale.created_at|date:"d/m/Y · H:i" }}</td>
+                    <td>{{ sale.user.get_full_name|default:sale.user.username }}</td>
+                    <td class="text-end"><strong>{{ sale.total|floatformat:"-2g" }} FCFA</strong></td>
+                    <td>{% if sale.is_canceled %}<span class="sale-status sale-status--canceled">Annulée</span>{% else %}<span class="sale-status sale-status--active">Enregistrée</span>{% endif %}</td>
+                    <td><a class="sales-view-link" href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">Détails</a></td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        </div>
-        {% if is_paginated %}
-        <div class="pagination">
-            {% if page_obj.has_previous %}
-            <a href="?page={{ page_obj.previous_page_number }}">Précédent</a>
-            {% endif %}
-            Page {{ page_obj.number }} sur {{ paginator.num_pages }}
-            {% if page_obj.has_next %}
-            <a href="?page={{ page_obj.next_page_number }}">Suivant</a>
-            {% endif %}
-        </div>
-        {% endif %}
     </div>
+    <ul class="sales-history-mobile" aria-label="Historique des ventes">
+        {% for sale in sales %}
+        <li><a class="sale-history-card" href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">
+            <div class="sale-history-card__top"><strong>Ticket #{{ sale.pk }}</strong>{% if sale.is_canceled %}<span class="sale-status sale-status--canceled">Annulée</span>{% else %}<span class="sale-status sale-status--active">Enregistrée</span>{% endif %}</div>
+            <div class="sale-history-card__bottom"><span>{{ sale.created_at|date:"d/m/Y · H:i" }}<small>{{ sale.user.get_full_name|default:sale.user.username }}</small></span><strong>{{ sale.total|floatformat:"-2g" }} FCFA</strong></div>
+        </a></li>
+        {% endfor %}
+    </ul>
+    {% if is_paginated %}
+    <nav class="sales-pagination" aria-label="Pages des ventes">
+        {% if page_obj.has_previous %}<a href="?{% if request.GET.urlencode %}{{ request.GET.urlencode }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Précédente</a>{% else %}<span></span>{% endif %}
+        <span>Page {{ page_obj.number }} sur {{ paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a href="?{% if request.GET.urlencode %}{{ request.GET.urlencode }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Suivante</a>{% else %}<span></span>{% endif %}
+    </nav>
+    {% endif %}
     {% else %}
-    <p class="empty-state">Aucune vente enregistrée pour le moment.</p>
+    <p class="empty-state">Aucune vente ne correspond à ces critères. Effacez les filtres ou commencez un nouveau ticket.</p>
     {% endif %}
 </div>
 {% endblock %}

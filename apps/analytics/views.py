@@ -13,7 +13,6 @@ from django.views.generic import TemplateView
 
 from apps.activities.models import Activity
 from apps.accounts.permissions import user_is_global
-from apps.expenses.models import Expense, ExpenseAuditLog
 from apps.inventory.models import StockMovement
 from apps.sales.models import Sale, SaleCancellation
 
@@ -23,6 +22,7 @@ from .services import (
     activity_operational_details,
     global_employee_metrics,
     global_activity_metrics,
+    global_item_metrics,
 )
 
 
@@ -96,64 +96,77 @@ class GlobalDashboardView(LoginRequiredMixin, TemplateView):
             raise PermissionDenied("Cette vue est réservée au gérant global.")
         return super().dispatch(request, *args, **kwargs)
 
+    @staticmethod
+    def get_period_dates(period, today):
+        if period == "week":
+            start_date = today - timedelta(days=today.weekday())
+        elif period == "month":
+            start_date = today.replace(day=1)
+        else:
+            period = "day"
+            start_date = today
+        return period, start_date, today
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        start_date, end_date = get_date_range(self.request)
+        period, start_date, end_date = self.get_period_dates(
+            self.request.GET.get("period", "day"),
+            timezone.localdate(),
+        )
+        previous_end = start_date - timedelta(days=1)
+        previous_start = previous_end - (end_date - start_date)
+        rows = global_activity_metrics(self.request.user, start_date, end_date)
+        previous_rows = global_activity_metrics(
+            self.request.user,
+            previous_start,
+            previous_end,
+        )
+        previous_by_activity = {row["activity"].pk: row for row in previous_rows}
+        for row in rows:
+            previous = previous_by_activity.get(row["activity"].pk, {})
+            previous_revenue = previous.get("revenue", Decimal("0.00"))
+            previous_margin = previous.get("estimated_margin", Decimal("0.00"))
+            row["previous_revenue"] = previous_revenue
+            row["revenue_change"] = row["revenue"] - previous_revenue
+            row["revenue_change_percent"] = (
+                row["revenue_change"] / previous_revenue * 100
+                if previous_revenue
+                else None
+            )
+            row["margin_change"] = row["estimated_margin"] - previous_margin
+        totals = {
+            key: sum((row[key] for row in rows), start=Decimal("0.00"))
+            for key in ("revenue", "sale_count", "estimated_margin", "stock_purchases")
+        }
+        previous_revenue_total = sum(
+            (row["revenue"] for row in previous_rows),
+            start=Decimal("0.00"),
+        )
+        totals["previous_revenue"] = previous_revenue_total
+        totals["revenue_change"] = totals["revenue"] - previous_revenue_total
+        totals["revenue_change_percent"] = (
+            totals["revenue_change"] / previous_revenue_total * 100
+            if previous_revenue_total
+            else None
+        )
+        totals["stock_entry_count"] = sum(row["stock_purchase_count"] for row in rows)
+        item_rankings = global_item_metrics(self.request.user, start_date, end_date)
+        employees = global_employee_metrics(self.request.user, start_date, end_date)
         context.update(
             {
-                "rows": global_activity_metrics(self.request.user, start_date, end_date),
-                "employees": global_employee_metrics(self.request.user, start_date, end_date),
+                "rows": rows,
+                "employees": employees[:5],
+                "item_rankings": item_rankings,
+                "totals": totals,
+                "period": period,
                 "start_date": start_date,
                 "end_date": end_date,
+                "previous_start": previous_start,
+                "previous_end": previous_end,
             }
         )
-        context["totals"] = {
-            key: sum((row[key] for row in context["rows"]), start=0)
-            for key in (
-                "revenue",
-                "expenses",
-                "estimated_margin",
-                "reported_balance",
-                "stock_purchases",
-            )
-        }
-        today = timezone.localdate()
         active_activities = Activity.objects.filter(is_active=True)
         canceled_sales = SaleCancellation.objects.filter(sale_id=OuterRef("pk"))
-        today_sales = Sale.objects.filter(
-            activity__in=active_activities,
-            created_at__date=today,
-        ).annotate(_is_canceled=Exists(canceled_sales))
-        today_sales = today_sales.filter(_is_canceled=False)
-        today_expenses = Expense.objects.filter(
-            activity__in=active_activities,
-            created_at__date=today,
-            is_canceled=False,
-        )
-        today_stock_entries = StockMovement.objects.filter(
-            activity__in=active_activities,
-            movement_type=StockMovement.MovementType.ENTRY,
-            unit_cost__isnull=False,
-            created_at__date=today,
-        )
-        context["today_totals"] = {
-            "revenue": today_sales.aggregate(total=Sum("total"))["total"] or Decimal("0.00"),
-            "sale_count": today_sales.count(),
-            "expenses": today_expenses.aggregate(total=Sum("amount"))["total"] or Decimal("0.00"),
-            "expense_count": today_expenses.count(),
-            "stock_purchases": today_stock_entries.aggregate(
-                total=Sum(
-                    F("quantity") * F("unit_cost"),
-                    output_field=DecimalField(max_digits=16, decimal_places=2),
-                )
-            )["total"] or Decimal("0.00"),
-            "stock_entry_count": today_stock_entries.count(),
-        }
-        context["today_totals"]["reported_balance"] = (
-            context["today_totals"]["revenue"] - context["today_totals"]["expenses"]
-        )
-        context["today_date"] = today
-
         recent_sales = Sale.objects.filter(
             activity__in=active_activities,
         ).annotate(_is_canceled=Exists(canceled_sales)).filter(
@@ -164,9 +177,6 @@ class GlobalDashboardView(LoginRequiredMixin, TemplateView):
         recent_cancellations = SaleCancellation.objects.filter(
             sale__activity__in=active_activities,
         ).select_related("sale", "sale__activity", "user")
-        recent_expense_events = ExpenseAuditLog.objects.filter(
-            expense__activity__in=active_activities,
-        ).select_related("expense", "expense__activity", "expense__category", "user")
         recent_movements = StockMovement.objects.filter(
             activity__in=active_activities,
         ).exclude(movement_type=StockMovement.MovementType.EXIT).select_related(
@@ -209,23 +219,6 @@ class GlobalDashboardView(LoginRequiredMixin, TemplateView):
                             "pk": cancellation.sale_id,
                         },
                     ),
-                }
-            )
-        for event in recent_expense_events.order_by("-created_at")[:18]:
-            expense = event.expense
-            recent_operations.append(
-                {
-                    "kind": "expense",
-                    "created_at": event.created_at,
-                    "activity": expense.activity,
-                    "user": event.user,
-                    "label": f"Dépense · {expense.category.name} · {event.get_action_display()}",
-                    "detail": event.reason or expense.description or "Dépense enregistrée",
-                    "amount": -expense.amount if event.action == ExpenseAuditLog.Action.CREATED else None,
-                    "url": reverse(
-                        "expenses:expense-detail",
-                        kwargs={"pk": expense.pk},
-                    ) + f"?activity={expense.activity.slug}",
                 }
             )
         for movement in recent_movements.order_by("-created_at")[:12]:

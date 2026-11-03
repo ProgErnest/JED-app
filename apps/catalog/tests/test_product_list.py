@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from apps.accounts.models import ActivityMembership, Role
 from apps.activities.models import Activity
-from apps.catalog.models import Product
+from apps.catalog.models import PriceHistory, Product
 from apps.inventory.models import StockMovement
 
 
@@ -109,3 +109,42 @@ class ProductListViewTests(TestCase):
         self.assertContains(response, 'name="price"')
         self.assertNotContains(response, 'name="slug"')
         self.assertNotContains(response, 'name="is_active"')
+
+    def test_edit_product_saves_fields_keeps_slug_and_updates_price_history(self):
+        self.client.force_login(self.manager)
+        edit_url = reverse(
+            "catalog:product_edit",
+            kwargs={"activity_slug": self.activity.slug, "slug": self.product.slug},
+        )
+
+        get_response = self.client.get(edit_url)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertContains(get_response, 'name="is_active"')
+        self.assertNotContains(get_response, 'name="slug"')
+
+        response = self.client.post(
+            edit_url,
+            {
+                "name": "Huile de palme raffinée",
+                "unit": "bidon",
+                "description": "Conditionnement familial",
+                "price": "3000.00",
+                "is_active": "on",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("catalog:product_list", args=[self.activity.slug]),
+        )
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.name, "Huile de palme raffinée")
+        self.assertEqual(self.product.slug, "huile-de-palme")
+        self.assertEqual(self.product.unit, "bidon")
+        self.assertEqual(self.product.description, "Conditionnement familial")
+        self.assertEqual(self.product.price, Decimal("3000.00"))
+        self.assertTrue(self.product.is_active)
+        self.assertEqual(
+            list(PriceHistory.objects.filter(object_id=self.product.pk).values_list("price", flat=True)),
+            [Decimal("3000.00"), Decimal("2500.00")],
+        )

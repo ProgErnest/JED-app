@@ -15,7 +15,16 @@ from django.db import transaction
 from .models import StockMovement
 
 
-def record_stock_movement(product, movement_type, quantity, unit_cost=None, user=None, reason="", activity=None):
+def record_stock_movement(
+    product,
+    movement_type,
+    quantity=None,
+    unit_cost=None,
+    user=None,
+    reason="",
+    activity=None,
+    counted_quantity=None,
+):
     """Enregistre un mouvement de stock et met à jour le produit atomiquement.
 
     Paramètres
@@ -24,10 +33,13 @@ def record_stock_movement(product, movement_type, quantity, unit_cost=None, user
         Produit concerné.
     movement_type : str
         L'une des valeurs de ``StockMovement.MovementType``.
-    quantity : int
-        Quantité saisie (positive). Le signe est déterminé par le type de
-        mouvement : positif pour une entrée, négatif pour une sortie, signé
-        pour une correction.
+    quantity : int, optional
+        Quantité positive d'entrée/sortie, ou écart signé pour les corrections
+        internes. À omettre lorsqu'un comptage physique est fourni.
+    counted_quantity : int, optional
+        Quantité réelle observée. Pour une correction, le service calcule
+        l'écart depuis le stock courant après verrouillage du produit et la
+        conserve dans l'historique du mouvement.
     unit_cost : Decimal, optional
         Coût unitaire d'achat, obligatoire pour une entrée.
     user : User
@@ -57,7 +69,19 @@ def record_stock_movement(product, movement_type, quantity, unit_cost=None, user
     if movement_type not in movement_types.values:
         raise ValidationError("Type de mouvement invalide.")
 
-    if not isinstance(quantity, int) or isinstance(quantity, bool):
+    uses_counted_quantity = (
+        movement_type == movement_types.CORRECTION and counted_quantity is not None
+    )
+    if uses_counted_quantity:
+        if (
+            not isinstance(counted_quantity, int)
+            or isinstance(counted_quantity, bool)
+            or counted_quantity < 0
+        ):
+            raise ValidationError("La quantité comptée doit être un entier positif ou nul.")
+        if quantity is not None:
+            raise ValidationError("Saisissez soit une quantité comptée, soit un écart.")
+    elif not isinstance(quantity, int) or isinstance(quantity, bool):
         raise ValidationError("La quantité doit être un nombre entier.")
     if movement_type == movement_types.ENTRY:
         if quantity <= 0:
@@ -72,7 +96,11 @@ def record_stock_movement(product, movement_type, quantity, unit_cost=None, user
             raise ValidationError("Le coût unitaire doit être un montant positif ou nul.")
     elif unit_cost is not None:
         raise ValidationError("Le coût unitaire ne s'applique qu'aux entrées de stock.")
-    if movement_type in (movement_types.EXIT, movement_types.CORRECTION) and quantity == 0:
+    if (
+        movement_type in (movement_types.EXIT, movement_types.CORRECTION)
+        and not uses_counted_quantity
+        and quantity == 0
+    ):
         raise ValidationError("Le mouvement doit modifier le stock.")
     if movement_type == movement_types.CORRECTION and (
         not isinstance(reason, str) or not reason.strip()
@@ -112,8 +140,19 @@ def record_stock_movement(product, movement_type, quantity, unit_cost=None, user
             locked_product.stock_quantity += signed_qty
 
         else:  # CORRECTION
-            signed_qty = quantity
-            locked_product.stock_quantity += signed_qty
+            if uses_counted_quantity:
+                signed_qty = counted_quantity - locked_product.stock_quantity
+                if signed_qty == 0:
+                    product.stock_quantity = locked_product.stock_quantity
+                    product.average_cost = locked_product.average_cost
+                    product.updated_at = locked_product.updated_at
+                    product._last_stock_movement = None
+                    product._stock_count_unchanged = True
+                    return product
+                locked_product.stock_quantity = counted_quantity
+            else:
+                signed_qty = quantity
+                locked_product.stock_quantity += signed_qty
 
         locked_product.save()
 
@@ -125,10 +164,12 @@ def record_stock_movement(product, movement_type, quantity, unit_cost=None, user
             user=user,
             activity=activity,
             reason=reason,
+            counted_quantity=counted_quantity if uses_counted_quantity else None,
         )
 
     product.stock_quantity = locked_product.stock_quantity
     product.average_cost = locked_product.average_cost
     product.updated_at = locked_product.updated_at
     product._last_stock_movement = movement
+    product._stock_count_unchanged = False
     return product

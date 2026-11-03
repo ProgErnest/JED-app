@@ -49,3 +49,18 @@ class ServiceForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["price"].label = "Prix de la prestation (FCFA)"
+        self.fields.pop("slug")
+        if not self.instance.pk:
+            self.fields.pop("is_active")
+
+    def save(self, commit=True):
+        if not self.instance.pk:
+            base_slug = slugify(self.cleaned_data["name"]) or "prestation"
+            slug = base_slug
+            suffix = 2
+            existing_services = Service.objects.filter(activity=self.instance.activity)
+            while existing_services.filter(slug=slug).exists():
+                slug = f"{base_slug}-{suffix}"
+                suffix += 1
+            self.instance.slug = slug
+        return super().save(commit=commit)

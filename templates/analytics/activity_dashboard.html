@@ -34,15 +34,14 @@
 
   <dl class="metric-grid">
     <div class="metric-card" data-tone="green"><dt>Ventes encaissées</dt><dd>{{ metrics.revenue|floatformat:2 }} FCFA</dd><small>{{ metrics.sale_count }} tickets non annulés</small><span class="metric-status">Revenus</span></div>
-    <div class="metric-card" data-tone="amber"><dt>Dépenses déclarées</dt><dd>{{ metrics.expenses|floatformat:2 }} FCFA</dd><small>{{ metrics.expense_count }} dépenses actives</small><span class="metric-status">Charges</span></div>
     <div class="metric-card" data-tone="navy"><dt>Marge brute estimée</dt><dd>{{ metrics.estimated_margin|floatformat:2 }} FCFA</dd><small>{{ metrics.reliable_margin_line_count }} lignes fiables</small><span class="metric-status">Estimation</span></div>
-    <div class="metric-card" data-tone="red"><dt>Solde après dépenses déclarées</dt><dd>{{ metrics.reported_balance|floatformat:2 }} FCFA</dd><small>Ce n'est pas un bénéfice net comptable.</small><span class="metric-status">Indicatif</span></div>
+    {# Dépenses et solde après dépenses masqués #}
   </dl>
 
   {% if metrics.unreliable_line_count %}
     <div class="alert alert-warning mt-3" role="status">La marge estimée exclut {{ metrics.unreliable_line_count }} ligne(s) dont le coût n'est pas fiable.</div>
   {% endif %}
-  <p class="small text-muted mt-3">La marge est une estimation basée sur les coûts enregistrés. Le solde compare les ventes et les dépenses déclarées uniquement, sans représenter un bénéfice net comptable.</p>
+  <p class="small text-muted mt-3">La marge est une estimation basée sur les coûts enregistrés.</p>
 
   <section class="dashboard-section" aria-labelledby="activity-sales-heading">
     <div class="section-heading"><h2 id="activity-sales-heading">Ventes détaillées</h2></div>

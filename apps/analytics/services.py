@@ -25,7 +25,6 @@ from apps.accounts.permissions import (
 )
 from apps.activities.models import Activity
 from apps.catalog.models import Product
-from apps.expenses.models import Expense, ExpenseAuditLog
 from apps.sales.models import Sale, SaleCancellation, SaleLine
 from apps.inventory.models import StockMovement
 
@@ -41,46 +40,35 @@ def dashboard_metrics(user, activity, start_date: date, end_date: date) -> dict:
         created_at__date__gte=start_date,
         created_at__date__lte=end_date,
     ).exclude(pk__in=SaleCancellation.objects.values("sale_id"))
-    expenses = Expense.objects.filter(
-        activity=activity,
-        created_at__date__gte=start_date,
-        created_at__date__lte=end_date,
-        is_canceled=False,
-    )
-
+    # Neutraliser les dépenses dans les indicateurs
     employee_scope = user_is_employee_in_activity(user, activity)
     if employee_scope:
         sales = sales.filter(user=user)
-        expenses = expenses.filter(user=user)
-
     sale_totals = sales.aggregate(
         revenue=Sum("total"),
         sale_count=Count("pk"),
     )
-    expense_totals = expenses.aggregate(
-        expense_total=Sum("amount"),
-        expense_count=Count("pk"),
-    )
     lines = SaleLine.objects.filter(sale__in=sales)
-    reliable_lines = lines.filter(margin_reliable=True)
+    reliable_lines = lines.filter(margin_reliable=True, product__isnull=False)
     line_margin = ExpressionWrapper(
         (F("unit_price") - F("cost")) * F("quantity"),
         output_field=DecimalField(max_digits=12, decimal_places=2),
     )
     margin_total = reliable_lines.aggregate(margin=Sum(line_margin))["margin"] or ZERO
-
-    unreliable_line_count = lines.filter(margin_reliable=False).count()
+    unreliable_line_count = lines.filter(
+        product__isnull=False,
+        margin_reliable=False,
+    ).count()
     return {
         "revenue": sale_totals["revenue"] or ZERO,
         "sale_count": sale_totals["sale_count"],
-        "expenses": expense_totals["expense_total"] or ZERO,
-        "expense_count": expense_totals["expense_count"],
+        "expenses": ZERO,
+        "expense_count": 0,
         "estimated_margin": margin_total,
         "unreliable_line_count": unreliable_line_count,
         "reliable_margin_line_count": reliable_lines.count(),
         "employee_scope": employee_scope,
-        "reported_balance": (sale_totals["revenue"] or ZERO)
-        - (expense_totals["expense_total"] or ZERO),
+        "reported_balance": sale_totals["revenue"] or ZERO,
     }
 
 
@@ -91,28 +79,102 @@ def global_activity_metrics(user, start_date: date, end_date: date) -> list[dict
     rows = []
     for activity in activities:
         metrics = dashboard_metrics(user, activity, start_date, end_date)
-        stock_purchases = StockMovement.objects.filter(
+        stock_purchase_totals = StockMovement.objects.filter(
             activity=activity,
             movement_type=StockMovement.MovementType.ENTRY,
             unit_cost__isnull=False,
             created_at__date__gte=start_date,
             created_at__date__lte=end_date,
         ).aggregate(
+            count=Count("pk"),
             total=Sum(
                 ExpressionWrapper(
                     F("quantity") * F("unit_cost"),
                     output_field=DecimalField(max_digits=16, decimal_places=2),
                 )
             )
-        )["total"]
+        )
         rows.append(
             {
                 "activity": activity,
                 **metrics,
-                "stock_purchases": stock_purchases or ZERO,
+                "stock_purchases": stock_purchase_totals["total"] or ZERO,
+                "stock_purchase_count": stock_purchase_totals["count"],
             }
         )
     return rows
+
+
+def global_item_metrics(user, start_date: date, end_date: date) -> dict:
+    """Return global item rankings without treating service revenue as margin."""
+    if not user_is_global(user):
+        raise PermissionDenied("Cette vue est réservée au gérant global.")
+    line_margin = ExpressionWrapper(
+        (F("unit_price") - F("cost")) * F("quantity"),
+        output_field=DecimalField(max_digits=16, decimal_places=2),
+    )
+    lines = SaleLine.objects.filter(
+        sale__activity__is_active=True,
+        sale__created_at__date__gte=start_date,
+        sale__created_at__date__lte=end_date,
+        sale__cancellation__isnull=True,
+    ).annotate(line_margin=line_margin).values(
+        "product_id",
+        "product__name",
+        "service_id",
+        "service__name",
+        "sale__activity__name",
+        "quantity",
+        "total",
+        "margin_reliable",
+        "line_margin",
+    )
+    grouped = {}
+    for row in lines:
+        is_product = row["product_id"] is not None
+        item_id = row["product_id"] or row["service_id"]
+        key = (item_id, row["sale__activity__name"])
+        item = grouped.setdefault(
+            key,
+            {
+                "name": row["product__name"] or row["service__name"] or "Article supprimé",
+                "activity": row["sale__activity__name"],
+                "kind": "product" if is_product else "service",
+                "quantity": 0,
+                "revenue": ZERO,
+                "reliable_line_count": 0,
+                "reliable_margin": ZERO if is_product else None,
+            },
+        )
+        item["quantity"] += row["quantity"]
+        item["revenue"] += row["total"]
+        if is_product and row["margin_reliable"]:
+            item["reliable_line_count"] += 1
+            item["reliable_margin"] += row["line_margin"] or ZERO
+    items = list(grouped.values())
+    for item in items:
+        if item["kind"] == "product" and not item["reliable_line_count"]:
+            item["reliable_margin"] = None
+    reliable_products = [
+        item for item in items
+        if item["kind"] == "product" and item["reliable_margin"] is not None
+    ]
+    return {
+        "best_sellers": sorted(
+            items,
+            key=lambda item: (item["revenue"], item["quantity"]),
+            reverse=True,
+        )[:5],
+        "profitable_products": sorted(
+            reliable_products,
+            key=lambda item: item["reliable_margin"],
+            reverse=True,
+        )[:5],
+        "low_margin_products": sorted(
+            reliable_products,
+            key=lambda item: item["reliable_margin"],
+        )[:5],
+    }
 
 
 def global_employee_metrics(user, start_date: date, end_date: date) -> list[dict]:
@@ -160,51 +222,6 @@ def global_employee_metrics(user, start_date: date, end_date: date) -> list[dict
             "stock_purchases": ZERO,
             "last_operation": row["last_operation"],
         }
-
-    expenses = (
-        Expense.objects.filter(
-            activity__in=activities,
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date,
-            is_canceled=False,
-        )
-        .values(
-            "activity_id",
-            "activity__name",
-            "user_id",
-            "user__username",
-            "user__first_name",
-            "user__last_name",
-        )
-        .annotate(
-            expense_count=Count("pk"),
-            expenses=Sum("amount"),
-            last_operation=Max("created_at"),
-        )
-    )
-    for row in expenses:
-        key = (row["activity_id"], row["user_id"])
-        employee = grouped.setdefault(
-            key,
-            {
-                "activity": row["activity__name"],
-                "username": row["user__username"],
-                "full_name": " ".join(
-                    part for part in (row["user__first_name"], row["user__last_name"]) if part
-                ) or row["user__username"],
-                "sale_count": 0,
-                "revenue": ZERO,
-                "expense_count": 0,
-                "expenses": ZERO,
-                "stock_purchases": ZERO,
-                "last_operation": row["last_operation"],
-            },
-        )
-        employee["expense_count"] = row["expense_count"]
-        employee["expenses"] = row["expenses"] or ZERO
-        employee["last_operation"] = max(
-            employee["last_operation"], row["last_operation"]
-        )
 
     movements = (
         StockMovement.objects.filter(
@@ -329,44 +346,6 @@ def global_employee_metrics(user, start_date: date, end_date: date) -> list[dict
                 "last_operation": row["last_operation"],
             }
 
-    expense_events = (
-        ExpenseAuditLog.objects.filter(
-            expense__activity__in=activities,
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date,
-        )
-        .values(
-            "expense__activity_id",
-            "expense__activity__name",
-            "user_id",
-            "user__username",
-            "user__first_name",
-            "user__last_name",
-        )
-        .annotate(last_operation=Max("created_at"))
-    )
-    for row in expense_events:
-        activity_id = row["expense__activity_id"]
-        activity_name = row["expense__activity__name"]
-        key = (activity_id, row["user_id"])
-        employee = grouped.get(key)
-        if employee:
-            employee["last_operation"] = max(employee["last_operation"], row["last_operation"])
-        else:
-            grouped[key] = {
-                "activity": activity_name,
-                "username": row["user__username"],
-                "full_name": " ".join(
-                    part for part in (row["user__first_name"], row["user__last_name"]) if part
-                ) or row["user__username"],
-                "sale_count": 0,
-                "revenue": ZERO,
-                "expense_count": 0,
-                "expenses": ZERO,
-                "stock_purchases": ZERO,
-                "last_operation": row["last_operation"],
-            }
-
     return sorted(
         grouped.values(),
         key=lambda employee: (
@@ -399,11 +378,6 @@ def activity_operational_details(user, activity, start_date: date, end_date: dat
             SaleCancellation.objects.filter(sale_id=OuterRef("pk"))
         )
     ).select_related("user").prefetch_related("lines__product", "lines__service")
-    expenses = Expense.objects.filter(
-        activity=activity,
-        created_at__date__gte=start_date,
-        created_at__date__lte=end_date,
-    ).select_related("category", "user")
     movements = StockMovement.objects.filter(
         activity=activity,
         created_at__date__gte=start_date,
@@ -412,15 +386,7 @@ def activity_operational_details(user, activity, start_date: date, end_date: dat
 
     if user_is_employee_in_activity(user, activity):
         sales = sales.filter(user=user)
-        expenses = expenses.filter(user=user)
         movements = movements.filter(user=user)
-
-    expenses_by_category = (
-        expenses.filter(is_canceled=False)
-        .values("category__name")
-        .annotate(amount=Sum("amount"), expense_count=Count("pk"))
-        .order_by("category__name")
-    )
     stock_purchase_totals = movements.filter(
         movement_type=StockMovement.MovementType.ENTRY,
         unit_cost__isnull=False,
@@ -435,7 +401,6 @@ def activity_operational_details(user, activity, start_date: date, end_date: dat
     )
 
     sales = sales.order_by("-created_at")[:30]
-    expenses = expenses.order_by("-created_at")[:30]
     movements = movements.order_by("-created_at")[:30]
 
     sales_by_item = (
@@ -526,30 +491,17 @@ def activity_operational_details(user, activity, start_date: date, end_date: dat
             }
         )
 
-    if employee_scope:
-        expense_audits = ExpenseAuditLog.objects.filter(
-            expense__activity=activity,
-            expense__user=user,
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date,
-        ).select_related("expense", "user").order_by("-created_at")[:30]
-    else:
-        expense_audits = ExpenseAuditLog.objects.filter(
-            expense__activity=activity,
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date,
-        ).select_related("expense", "user").order_by("-created_at")[:30]
-
+    # Neutraliser les dépenses et audits dans le contexte
     return {
         "sales": sales,
-        "expenses": expenses,
+        "expenses": [],
         "movements": movements,
         "sales_by_item": sales_by_item,
         "product_profitability": product_profitability,
-        "expenses_by_category": expenses_by_category,
+        "expenses_by_category": [],
         "stock_purchase_total": stock_purchase_totals["amount"] or ZERO,
         "stock_purchase_count": stock_purchase_totals["movement_count"],
-        "expense_audits": expense_audits,
+        "expense_audits": [],
     }
 
 

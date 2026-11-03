@@ -20,7 +20,7 @@
         {% if current_activity %}
         <a href="{% url 'sales:sale_list' activity_slug=current_activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-sale"></use></svg>Ventes</a>
         <a href="{% url 'inventory:movement_list' activity_slug=current_activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-stock"></use></svg>Stock</a>
-        <a href="{% url 'expenses:expense-list' %}?activity={{ current_activity.slug }}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-expense"></use></svg>Dépenses</a>
+        {# <a href="{% url 'expenses:expense-list' %}?activity={{ current_activity.slug }}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-expense"></use></svg>Dépenses</a> #}
         <a href="{% url 'catalog:product_list' activity_slug=current_activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-catalog"></use></svg>Catalogue</a>
         {% endif %}
         {% endwith %}

@@ -1,109 +1,279 @@
 {% extends "catalog/base.html" %}
-{% load static %}
+{% load static l10n %}
+
+{% block title %}Nouvelle vente — {{ activity.name }}{% endblock %}
 
 {% block content %}
-<div class="page-heading">
-    <h1>Nouvelle vente</h1>
-</div>
-<form method="post" novalidate class="form-panel">
-    {% csrf_token %}
-    {{ formset.management_form }}
-    {% if formset.non_form_errors %}<div class="alert alert-danger" role="alert">{{ formset.non_form_errors }}</div>{% endif %}
-    <p class="sale-instruction">Choisissez l’article, vérifiez la quantité, puis enregistrez.</p>
-    <div id="lines" class="ticket-lines">
-        {% for form in formset %}
-        <fieldset class="ticket-line">
-            <legend class="visually-hidden">Ligne {{ forloop.counter }}</legend>
-            <div class="form-group item-field">
-                {{ form.item.label_tag }}
-                {{ form.item }}
-                {{ form.item.errors }}
-                {{ form.product }}
-                {{ form.service }}
-            </div>
-            <div class="form-group quantity-field">
-                {{ form.quantity.label_tag }}
-                {{ form.quantity }}
-                {{ form.quantity.errors }}
-            </div>
-            {{ form.non_field_errors }}
-        </fieldset>
+<div class="sales-counter">
+    <header class="sales-counter__header">
+        <div>
+            <p class="page-kicker">{{ activity.name }} · Caisse</p>
+            <h1>Nouvelle vente</h1>
+        </div>
+        <a class="sales-counter__history" href="{% url 'sales:sale_list' activity_slug=activity.slug %}">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-history"></use></svg>
+            Historique
+        </a>
+    </header>
+
+    <form method="post" novalidate id="sale-form" class="sales-counter__layout">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        {% if formset.non_form_errors %}<div class="alert alert-danger sales-counter__error" role="alert">{{ formset.non_form_errors }}</div>{% endif %}
+        {% for line_form in formset %}
+            {% if line_form.errors %}<div class="sale-form-errors" role="alert">{% for field, errors in line_form.errors.items %}{% for error in errors %}<p>{{ error }}</p>{% endfor %}{% endfor %}</div>{% endif %}
         {% endfor %}
-    </div>
+
+        <section class="sales-picker" aria-label="Catalogue des articles">
+            <div class="sales-picker__tools">
+                <div class="sales-tabs" role="tablist" aria-label="Type d’article">
+                    <button class="sales-tab is-selected" type="button" role="tab" aria-selected="true" data-sale-category="product">Produits <span>{{ products|length }}</span></button>
+                    <button class="sales-tab" type="button" role="tab" aria-selected="false" data-sale-category="service">Prestations <span>{{ services|length }}</span></button>
+                </div>
+                <span class="visually-hidden">Produit ou prestation</span>
+                <label class="sales-search">
+                    <span class="visually-hidden">Rechercher dans le catalogue</span>
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-search"></use></svg>
+                    <input type="search" id="sale-search" placeholder="Rechercher un produit" autocomplete="off">
+                </label>
+            </div>
+
+            <p class="sales-picker__hint" id="sale-picker-hint">Touchez un produit pour l’ajouter au ticket.</p>
+            <div class="sales-items" id="sale-items" role="tabpanel" aria-live="polite">
+                {% for product in products %}
+                <button class="sale-item" type="button" data-item-key="product:{{ product.pk }}" data-item-type="product" data-item-name="{{ product.name }}" data-item-price="{{ product.price|unlocalize }}" data-item-stock="{{ product.stock_quantity }}" data-item-unit="{{ product.unit }}">
+                    <span class="sale-item__main"><strong>{{ product.name }}</strong><small>Stock : {{ product.stock_quantity }} {{ product.unit }}</small></span>
+                    <span class="sale-item__price">{{ product.price|floatformat:"-2g" }} <small>FCFA</small></span>
+                    <span class="sale-item__add" aria-hidden="true">+</span>
+                </button>
+                {% endfor %}
+                {% for service in services %}
+                <button class="sale-item" type="button" data-item-key="service:{{ service.pk }}" data-item-type="service" data-item-name="{{ service.name }}" data-item-price="{{ service.price|unlocalize }}" data-item-stock="" data-item-unit="prestation" hidden>
+                    <span class="sale-item__main"><strong>{{ service.name }}</strong><small>Prestation</small></span>
+                    <span class="sale-item__price">{{ service.price|floatformat:"-2g" }} <small>FCFA</small></span>
+                    <span class="sale-item__add" aria-hidden="true">+</span>
+                </button>
+                {% endfor %}
+            </div>
+            <p class="sales-items-empty" id="sales-items-empty" hidden>Aucun article ne correspond à cette recherche.</p>
+        </section>
+
+        <aside class="sale-ticket" aria-label="Ticket en cours">
+            <div class="sale-ticket__heading">
+                <div><p class="page-kicker">En cours</p><h2>Ticket</h2></div>
+                <span class="sale-ticket__count" id="sale-line-count">0 article</span>
+            </div>
+            <div id="sale-cart" class="sale-cart" aria-live="polite">
+                <p class="sale-cart__empty" id="sale-cart-empty">Le ticket est vide. Choisissez un produit ou une prestation.</p>
+            </div>
+
+            <p id="stock-warning" class="sale-stock-alert" role="status" hidden></p>
+            <div class="sale-ticket__total"><span>Total à payer</span><strong id="sale-total">0 FCFA</strong></div>
+            <p class="sale-ticket__note">Le prix affiché sera conservé sur ce ticket.</p>
+            <button class="sale-submit" id="sale-submit" type="submit" disabled>
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-check"></use></svg>
+                Enregistrer la vente
+            </button>
+            <a class="sale-ticket__cancel" href="{% url 'sales:sale_list' activity_slug=activity.slug %}">Annuler et revenir aux ventes</a>
+        </aside>
+
+        <div class="sale-hidden-forms" aria-hidden="true">
+            {% for form in formset %}
+            <div class="sale-form-row" data-form-index="{{ forloop.counter0 }}">
+                {{ form.item }}{{ form.product }}{{ form.service }}{{ form.quantity }}
+            </div>
+            {% endfor %}
+        </div>
+    </form>
     {{ stock_by_product|json_script:"sale-stock-data" }}
-    <p id="stock-warning" class="alert alert-warning stock-warning" role="status" hidden></p>
-    <template id="empty-sale-line">
-        <fieldset class="ticket-line">
-            <legend class="visually-hidden">Nouvelle ligne</legend>
-            <div class="form-group item-field">
-                {{ formset.empty_form.item.label_tag }}
-                {{ formset.empty_form.item }}
-                {{ formset.empty_form.product }}
-                {{ formset.empty_form.service }}
-            </div>
-            <div class="form-group quantity-field">
-                {{ formset.empty_form.quantity.label_tag }}
-                {{ formset.empty_form.quantity }}
-            </div>
-        </fieldset>
-    </template>
-    <button class="btn btn-secondary add-line action-link" type="button" id="add-sale-line"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Ajouter un article</button>
-    <p class="ticket-note">Les prix du catalogue seront enregistrés sur le ticket et ne changeront pas ensuite.</p>
-    <div class="sale-actions">
-        <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-check"></use></svg>Enregistrer la vente</button>
-        <a href="{% url 'sales:sale_list' activity_slug=activity.slug %}" class="btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-history"></use></svg>Mes ventes</a>
-    </div>
-</form>
+</div>
+
 <script>
-    const addLineButton = document.querySelector("#add-sale-line");
-    const lineContainer = document.querySelector("#lines");
-    const lineTemplate = document.querySelector("#empty-sale-line");
-    const totalForms = document.querySelector("#id_form-TOTAL_FORMS");
+(() => {
+    const form = document.querySelector("#sale-form");
+    const itemButtons = [...document.querySelectorAll(".sale-item")];
+    const categoryButtons = [...document.querySelectorAll("[data-sale-category]")];
+    const searchInput = document.querySelector("#sale-search");
+    const cart = document.querySelector("#sale-cart");
+    const cartEmpty = document.querySelector("#sale-cart-empty");
+    const totalDisplay = document.querySelector("#sale-total");
+    const lineCount = document.querySelector("#sale-line-count");
+    const submitButton = document.querySelector("#sale-submit");
+    const emptyResult = document.querySelector("#sales-items-empty");
     const stockWarning = document.querySelector("#stock-warning");
     const stockByProduct = JSON.parse(document.querySelector("#sale-stock-data").textContent);
+    const totalForms = document.querySelector("#id_form-TOTAL_FORMS");
+    const formRows = document.querySelector(".sale-hidden-forms");
+    const money = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+    const state = new Map();
+    let activeCategory = "product";
 
-    const updateStockWarning = () => {
-        const quantitiesByProduct = new Map();
-        lineContainer.querySelectorAll(".ticket-line").forEach((line) => {
-            const itemSelect = line.querySelector("select[name$='-item']");
-            const quantityInput = line.querySelector("input[name$='-quantity']");
-            if (!itemSelect.value.startsWith("product:")) return;
-            const productId = itemSelect.value.slice("product:".length);
-            quantitiesByProduct.set(
-                productId,
-                (quantitiesByProduct.get(productId) || 0) + Number(quantityInput.value || 0),
-            );
+    document.querySelectorAll(".sale-form-row").forEach((row) => {
+        const select = row.querySelector("select[name$='-item']");
+        if (select?.value) state.set(select.value, Math.max(1, Number(row.querySelector("input[name$='-quantity']")?.value || 1)));
+    });
+
+    const visibleItems = () => itemButtons.filter((button) =>
+        button.dataset.itemType === activeCategory
+        && button.dataset.itemName.toLocaleLowerCase().includes(searchInput.value.trim().toLocaleLowerCase())
+    );
+
+    const renderCatalog = () => {
+        let visibleCount = 0;
+        for (const button of itemButtons) {
+            const matches = button.dataset.itemType === activeCategory
+                && button.dataset.itemName.toLocaleLowerCase().includes(searchInput.value.trim().toLocaleLowerCase());
+            button.hidden = !matches;
+            const quantity = state.get(button.dataset.itemKey) || 0;
+            button.classList.toggle("is-in-cart", quantity > 0);
+            const addIndicator = button.querySelector(".sale-item__add");
+            addIndicator.textContent = quantity > 0 ? String(quantity) : "+";
+            if (matches) visibleCount += 1;
+        }
+        emptyResult.hidden = visibleCount > 0;
+        searchInput.placeholder = activeCategory === "product" ? "Rechercher un produit" : "Rechercher une prestation";
+        document.querySelector("#sale-picker-hint").textContent = activeCategory === "product"
+            ? "Touchez un produit pour l’ajouter au ticket."
+            : "Touchez une prestation pour l’ajouter au ticket.";
+    };
+
+    const syncFormset = () => {
+        const activeItems = [...state.entries()].filter(([, quantity]) => quantity > 0);
+        const rows = [...formRows.querySelectorAll(".sale-form-row")];
+        while (rows.length < activeItems.length) {
+            const index = Number(totalForms.value);
+            const template = document.querySelector("#empty-sale-line-template");
+            const row = template.content.cloneNode(true).firstElementChild;
+            row.querySelectorAll("input, select, label").forEach((element) => {
+                for (const attribute of ["name", "id", "for"]) {
+                    if (element.hasAttribute(attribute)) element.setAttribute(attribute, element.getAttribute(attribute).replaceAll("__prefix__", index));
+                }
+            });
+            row.dataset.formIndex = String(index);
+            formRows.append(row);
+            rows.push(row);
+            totalForms.value = String(index + 1);
+        }
+        rows.forEach((row, index) => {
+            const entry = activeItems[index];
+            const select = row.querySelector("select[name$='-item']");
+            const quantityInput = row.querySelector("input[name$='-quantity']");
+            if (entry) {
+                select.value = entry[0];
+                quantityInput.value = String(entry[1]);
+            } else {
+                select.value = "";
+                quantityInput.value = "1";
+            }
         });
+    };
+
+    const renderCart = () => {
+        const entries = [...state.entries()].filter(([, quantity]) => quantity > 0);
+        cart.querySelectorAll(".sale-cart__line").forEach((line) => line.remove());
+        cartEmpty.hidden = entries.length > 0;
+        let total = 0;
+        let totalQuantity = 0;
+        const quantitiesByProduct = new Map();
+
+        for (const [key, quantity] of entries) {
+            const catalogItem = itemButtons.find((button) => button.dataset.itemKey === key);
+            if (!catalogItem) continue;
+            const unitPrice = Number(catalogItem.dataset.itemPrice);
+            const itemTotal = unitPrice * quantity;
+            total += itemTotal;
+            totalQuantity += quantity;
+            if (catalogItem.dataset.itemType === "product") {
+                const productId = key.slice("product:".length);
+                quantitiesByProduct.set(productId, quantity);
+            }
+
+            const line = document.createElement("div");
+            line.className = "sale-cart__line";
+            line.innerHTML = `
+                <div class="sale-cart__line-main">
+                    <strong></strong><small></small>
+                    <div class="sale-quantity" aria-label="Quantité">
+                        <button type="button" data-cart-action="decrease" aria-label="Retirer une unité">−</button>
+                        <span></span>
+                        <button type="button" data-cart-action="increase" aria-label="Ajouter une unité">+</button>
+                    </div>
+                </div>
+                <strong class="sale-cart__line-total"></strong>
+                <button class="sale-cart__remove" type="button" data-cart-action="remove" aria-label="Retirer l’article">×</button>`;
+            line.dataset.itemKey = key;
+            line.querySelector(".sale-cart__line-main > strong").textContent = catalogItem.dataset.itemName;
+            line.querySelector(".sale-cart__line-main > small").textContent = `${money.format(unitPrice)} FCFA / ${catalogItem.dataset.itemUnit}`;
+            line.querySelector(".sale-quantity span").textContent = String(quantity);
+            line.querySelector(".sale-cart__line-total").textContent = `${money.format(itemTotal)} FCFA`;
+            cart.append(line);
+        }
+
         const warnings = [...quantitiesByProduct].flatMap(([productId, quantity]) => {
-            const available = stockByProduct[productId];
-            const productName = [...lineContainer.querySelectorAll("select[name$='-item']")]
-                .find((select) => select.value === `product:${productId}`)
-                ?.selectedOptions[0]?.textContent.split(" · ")[0] || "Article";
-            return quantity > available
-                ? [`${productName} : stock ${available}, quantité demandée ${quantity}. La vente reste possible, mais le stock deviendra négatif.`]
-                : [];
+            const available = Number(stockByProduct[productId] || 0);
+            if (quantity <= available) return [];
+            const button = itemButtons.find((item) => item.dataset.itemKey === `product:${productId}`);
+            return [`${button?.dataset.itemName || "Produit"} : ${available} en stock, ${quantity} demandé(s). La vente créera un stock négatif.`];
         });
         stockWarning.textContent = warnings.join(" ");
         stockWarning.hidden = warnings.length === 0;
+        totalDisplay.textContent = `${money.format(total)} FCFA`;
+        lineCount.textContent = `${totalQuantity} article${totalQuantity === 1 ? "" : "s"}`;
+        submitButton.disabled = entries.length === 0;
+        syncFormset();
+        renderCatalog();
     };
 
-    lineContainer.addEventListener("change", updateStockWarning);
-    lineContainer.addEventListener("input", updateStockWarning);
-
-    addLineButton.addEventListener("click", () => {
-        const index = Number(totalForms.value);
-        const line = lineTemplate.content.cloneNode(true);
-        line.querySelectorAll("input, select, label").forEach((element) => {
-            ["name", "id", "for"].forEach((attribute) => {
-                if (element.hasAttribute(attribute)) {
-                    element.setAttribute(attribute, element.getAttribute(attribute).replaceAll("__prefix__", index));
-                }
-            });
+    categoryButtons.forEach((button) => button.addEventListener("click", () => {
+        activeCategory = button.dataset.saleCategory;
+        categoryButtons.forEach((tab) => {
+            const selected = tab === button;
+            tab.classList.toggle("is-selected", selected);
+            tab.setAttribute("aria-selected", String(selected));
         });
-        lineContainer.append(line);
-        totalForms.value = index + 1;
-        lineContainer.lastElementChild.querySelector("select").focus();
-        updateStockWarning();
+        searchInput.value = "";
+        renderCatalog();
+    }));
+
+    searchInput.addEventListener("input", renderCatalog);
+    itemButtons.forEach((button) => button.addEventListener("click", () => {
+        const key = button.dataset.itemKey;
+        state.set(key, (state.get(key) || 0) + 1);
+        renderCart();
+    }));
+
+    cart.addEventListener("click", (event) => {
+        const action = event.target.closest("[data-cart-action]");
+        if (!action) return;
+        const line = action.closest(".sale-cart__line");
+        const key = line.dataset.itemKey;
+        const quantity = state.get(key) || 0;
+        if (action.dataset.cartAction === "increase") state.set(key, quantity + 1);
+        if (action.dataset.cartAction === "decrease") quantity > 1 ? state.set(key, quantity - 1) : state.delete(key);
+        if (action.dataset.cartAction === "remove") state.delete(key);
+        renderCart();
     });
+
+    form.addEventListener("submit", (event) => {
+        if (state.size === 0) {
+            event.preventDefault();
+            return;
+        }
+        submitButton.disabled = true;
+        submitButton.classList.add("is-saving");
+        submitButton.lastChild.textContent = " Enregistrement…";
+    });
+
+    renderCart();
+})();
 </script>
+
+<template id="empty-sale-line-template">
+    <div class="sale-form-row" data-form-index="__prefix__">
+        {{ formset.empty_form.item }}
+        {{ formset.empty_form.product }}
+        {{ formset.empty_form.service }}
+        {{ formset.empty_form.quantity }}
+    </div>
+</template>
 {% endblock %}

@@ -1,41 +1,43 @@
 {% extends "catalog/base.html" %}
 {% load static %}
 
+{% block title %}Annulations — {{ activity.name }}{% endblock %}
+
 {% block content %}
-<div class="page-heading"><h1>Journal des annulations</h1></div>
-{% if cancellations %}
-<div class="table-responsive mobile-list" role="region" aria-label="Journal des annulations" tabindex="0">
-<table>
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Ticket</th>
-            <th>Vendeur</th>
-            <th>Annulé par</th>
-            <th>Motif</th>
-        </tr>
-    </thead>
-    <tbody>
+<div class="page-shell sales-history">
+    <div class="page-heading">
+        <div><p class="page-kicker">{{ activity.name }} · Traçabilité</p><h1>Annulations</h1></div>
+        <a class="btn btn-secondary action-link" href="{% url 'sales:sale_list' activity_slug=activity.slug %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-back"></use></svg>Retour aux ventes</a>
+    </div>
+    {% if cancellations %}
+    <div class="sales-history-desktop" role="region" aria-label="Journal des annulations" tabindex="0">
+        <table class="sales-table">
+            <thead><tr><th>Ticket</th><th>Date</th><th>Vendeur</th><th>Annulé par</th><th>Motif</th><th></th></tr></thead>
+            <tbody>
+                {% for cancellation in cancellations %}
+                <tr>
+                    <th scope="row"><a href="{% url 'sales:sale_cancellation_detail' activity_slug=activity.slug pk=cancellation.pk %}">#{{ cancellation.sale_id }}</a></th>
+                    <td>{{ cancellation.created_at|date:"d/m/Y · H:i" }}</td>
+                    <td>{{ cancellation.sale.user.get_full_name|default:cancellation.sale.user.username }}</td>
+                    <td>{{ cancellation.user.get_full_name|default:cancellation.user.username }}</td>
+                    <td>{{ cancellation.reason }}</td>
+                    <td><a class="sales-view-link" href="{% url 'sales:sale_cancellation_detail' activity_slug=activity.slug pk=cancellation.pk %}">Détails</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <ul class="sales-history-mobile" aria-label="Journal des annulations">
         {% for cancellation in cancellations %}
-        <tr>
-            <td data-label="Date">{{ cancellation.created_at|date:"d/m/Y H:i" }}</td>
-            <td data-label="Ticket"><a class="action-link" href="{% url 'sales:sale_cancellation_detail' activity_slug=activity.slug pk=cancellation.pk %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-view"></use></svg>#{{ cancellation.sale_id }}</a></td>
-            <td data-label="Vendeur">{{ cancellation.sale.user.get_full_name|default:cancellation.sale.user.username }}</td>
-            <td data-label="Annulé par">{{ cancellation.user.get_full_name|default:cancellation.user.username }}</td>
-            <td data-label="Motif">{{ cancellation.reason }}</td>
-        </tr>
+        <li><a class="sale-history-card sale-history-card--canceled" href="{% url 'sales:sale_cancellation_detail' activity_slug=activity.slug pk=cancellation.pk %}">
+            <div class="sale-history-card__top"><strong>Ticket #{{ cancellation.sale_id }}</strong><span class="sale-status sale-status--canceled">Annulée</span></div>
+            <div class="sale-history-card__bottom"><span>{{ cancellation.created_at|date:"d/m/Y · H:i" }}<small>{{ cancellation.reason }}</small></span><strong>Voir</strong></div>
+        </a></li>
         {% endfor %}
-    </tbody>
-</table>
- </div>
-{% else %}
-<p class="empty-state">Aucune vente annulée pour cette activité.</p>
-{% endif %}
-{% if is_paginated %}
-<div class="pagination">
-    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Précédent</a>{% endif %}
-    Page {{ page_obj.number }} sur {{ paginator.num_pages }}
-    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Suivant</a>{% endif %}
+    </ul>
+    {% if is_paginated %}<nav class="sales-pagination" aria-label="Pages des annulations">{% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Précédente</a>{% else %}<span></span>{% endif %}<span>Page {{ page_obj.number }} sur {{ paginator.num_pages }}</span>{% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Suivante</a>{% else %}<span></span>{% endif %}</nav>{% endif %}
+    {% else %}
+    <p class="empty-state">Aucune annulation enregistrée pour cette activité.</p>
+    {% endif %}
 </div>
-{% endif %}
 {% endblock %}

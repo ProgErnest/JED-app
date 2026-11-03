@@ -1,0 +1,93 @@
+{% extends "catalog/base.html" %}
+{% load static %}
+
+{% block title %}État du stock — {{ activity.name }}{% endblock %}
+
+{% block content %}
+<div class="page-shell stock-page">
+    <div class="page-heading stock-heading">
+        <div>
+            <p class="page-kicker">Inventaire · {{ activity.name }}</p>
+            <h1>État du stock</h1>
+            <p class="text-muted">{{ product_count }} produit{% if product_count != 1 %}s{% endif %} affiché{% if product_count != 1 %}s{% endif %}</p>
+        </div>
+        <div class="stock-heading__actions">
+            <a href="{% url 'inventory:movement_entry_add' activity_slug=activity.slug %}" class="btn action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Approvisionner</a>
+            <a href="{% url 'inventory:movement_correction_add' activity_slug=activity.slug %}" class="btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>Corriger le stock</a>
+        </div>
+    </div>
+
+    <form method="get" class="stock-filters" role="search">
+        <div class="stock-search">
+            <label for="stock-search">Rechercher un produit</label>
+            <input id="stock-search" type="search" name="q" value="{{ search_query }}" placeholder="Ex. huile, savon, bouteille">
+        </div>
+        <div>
+            <label for="stock-filter">Afficher</label>
+            <select id="stock-filter" name="stock">
+                <option value="all" {% if stock_filter == "all" %}selected{% endif %}>Tous les stocks</option>
+                <option value="out" {% if stock_filter == "out" %}selected{% endif %}>En rupture</option>
+                <option value="low" {% if stock_filter == "low" %}selected{% endif %}>À réapprovisionner</option>
+                <option value="available" {% if stock_filter == "available" %}selected{% endif %}>Stock au-dessus des ventes du jour</option>
+            </select>
+        </div>
+        <div>
+            <label for="stock-sort">Trier par</label>
+            <select id="stock-sort" name="sort">
+                <option value="name" {% if sort == "name" %}selected{% endif %}>Nom du produit</option>
+                <option value="stock_low" {% if sort == "stock_low" %}selected{% endif %}>Stock le plus bas</option>
+                <option value="stock_high" {% if sort == "stock_high" %}selected{% endif %}>Stock le plus élevé</option>
+                <option value="sold_high" {% if sort == "sold_high" %}selected{% endif %}>Plus vendus aujourd’hui</option>
+            </select>
+        </div>
+        <button class="btn stock-filters__submit" type="submit">Appliquer</button>
+        {% if search_query or stock_filter != "all" or sort != "name" %}
+        <a class="stock-filters__reset" href="{% url 'inventory:movement_list' activity_slug=activity.slug %}">Tout effacer</a>
+        {% endif %}
+    </form>
+
+    {% if products %}
+    <div class="stock-desktop" role="region" aria-label="État du stock par produit" tabindex="0">
+        <table class="stock-table">
+            <thead>
+                <tr><th>Produit</th><th>Stock restant</th><th>Vendu aujourd’hui</th><th>Coût d’achat moyen</th><th>État</th><th><span class="visually-hidden">Détail</span></th></tr>
+            </thead>
+            <tbody>
+                {% for product in products %}
+                <tr>
+                    <th scope="row"><a class="stock-product-link" href="{% url 'inventory:product_stock_detail' activity_slug=activity.slug product_slug=product.slug %}">{{ product.name }}<small>Par {{ product.unit }}</small></a></th>
+                    <td><strong class="stock-quantity {% if product.stock_quantity <= 0 %}is-empty{% elif product.stock_quantity <= product.daily_sold and product.daily_sold > 0 %}is-low{% endif %}">{{ product.stock_quantity|floatformat:"-0g" }}</strong><span class="stock-unit">{{ product.unit }}</span></td>
+                    <td><strong>{{ product.daily_sold|floatformat:"-0g" }}</strong><span class="stock-unit">{{ product.unit }}</span></td>
+                    <td>{% if product.stock_quantity > 0 and product.average_cost > 0 or product.stock_quantity > 0 and product.has_zero_purchase_cost and not product.has_positive_purchase_cost %}{{ product.average_cost|floatformat:"-2g" }} FCFA{% else %}<span class="stock-muted">Non fiable</span>{% endif %}</td>
+                    <td>{% if product.stock_quantity <= 0 %}<span class="stock-status stock-status--out">Rupture</span>{% elif product.stock_quantity > 0 and product.average_cost > 0 and product.price <= product.average_cost %}<span class="stock-status stock-status--margin">Prix à revoir</span>{% elif product.daily_sold > 0 and product.stock_quantity <= product.daily_sold %}<span class="stock-status stock-status--low">À surveiller</span>{% else %}<span class="stock-status stock-status--ok">Disponible</span>{% endif %}</td>
+                    <td><a class="stock-detail-link" href="{% url 'inventory:product_stock_detail' activity_slug=activity.slug product_slug=product.slug %}">Détails</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <ul class="stock-mobile" aria-label="État du stock par produit">
+        {% for product in products %}
+        <li class="stock-mobile-card">
+            <a href="{% url 'inventory:product_stock_detail' activity_slug=activity.slug product_slug=product.slug %}" class="stock-mobile-card__link">
+                <div class="stock-mobile-card__heading">
+                    <div><h2>{{ product.name }}</h2><span>Par {{ product.unit }}</span></div>
+                    {% if product.stock_quantity <= 0 %}<span class="stock-status stock-status--out">Rupture</span>{% elif product.stock_quantity > 0 and product.average_cost > 0 and product.price <= product.average_cost %}<span class="stock-status stock-status--margin">Prix à revoir</span>{% elif product.daily_sold > 0 and product.stock_quantity <= product.daily_sold %}<span class="stock-status stock-status--low">À surveiller</span>{% else %}<span class="stock-status stock-status--ok">Disponible</span>{% endif %}
+                </div>
+                <div class="stock-mobile-card__numbers">
+                    <div><span>En stock</span><strong class="stock-quantity {% if product.stock_quantity <= 0 %}is-empty{% elif product.stock_quantity <= product.daily_sold and product.daily_sold > 0 %}is-low{% endif %}">{{ product.stock_quantity|floatformat:"-0g" }} <small>{{ product.unit }}</small></strong></div>
+                    <div><span>Vendu aujourd’hui</span><strong>{{ product.daily_sold|floatformat:"-0g" }} <small>{{ product.unit }}</small></strong></div>
+                </div>
+                <div class="stock-mobile-card__footer">
+                    <span>Achat moyen : {% if product.stock_quantity > 0 and product.average_cost > 0 or product.stock_quantity > 0 and product.has_zero_purchase_cost and not product.has_positive_purchase_cost %}{{ product.average_cost|floatformat:"-2g" }} FCFA{% else %}non fiable{% endif %}</span>
+                    <span class="stock-mobile-card__open">Voir les mouvements</span>
+                </div>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">Aucun produit ne correspond à cette recherche. Modifiez les filtres ou ajoutez un produit au catalogue.</p>
+    {% endif %}
+</div>
+{% endblock %}

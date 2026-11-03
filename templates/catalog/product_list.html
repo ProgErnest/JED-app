@@ -3,6 +3,10 @@
 
 {% block content %}
 <div class="page-shell">
+    <nav class="catalog-switch" aria-label="Type de catalogue">
+        <a href="{% url 'catalog:product_list' activity_slug=activity.slug %}" aria-current="page">Produits</a>
+        <a href="{% url 'catalog:service_list' activity_slug=activity.slug %}">Prestations</a>
+    </nav>
     <div class="page-heading">
         <div>
             <p class="page-kicker">Catalogue</p>

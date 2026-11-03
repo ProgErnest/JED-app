@@ -1,18 +1,21 @@
-from datetime import date
+from datetime import datetime, time
 from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.activities.models import Activity
 from apps.accounts.models import ActivityMembership, Role
 from apps.catalog.models import Product
+from apps.catalog.models import Service
 from apps.expenses.models import Expense, ExpenseCategory
 from apps.sales.models import Sale, SaleCancellation, SaleLine
 from apps.analytics.services import (
     activity_operational_details,
     dashboard_metrics,
     global_activity_metrics,
+    global_item_metrics,
 )
 
 
@@ -39,19 +42,31 @@ class DashboardMetricsTests(TestCase):
             name="Loyer analytics",
             slug="loyer-analytics-jed10",
         )
-        self.today = date.today()
+        self.test_product = Product.objects.create(
+            activity=self.activity,
+            name="Produit test analytics",
+            slug="produit-test-analytics",
+            unit="pièce",
+            price=Decimal("20.00"),
+        )
+        self.today = timezone.localdate()
 
     def create_sale(self, user, total, *, canceled=False, lines=()):
         sale = Sale.objects.create(activity=self.activity, user=user, total=total)
         for unit_price, cost, quantity, reliable in lines:
             SaleLine.objects.create(
                 sale=sale,
+                product=self.test_product,
                 quantity=quantity,
                 unit_price=unit_price,
                 cost=cost,
                 margin_reliable=reliable,
                 total=unit_price * quantity,
             )
+        Sale.objects.filter(pk=sale.pk).update(
+            created_at=timezone.make_aware(datetime.combine(self.today, time(12, 0)))
+        )
+        sale.refresh_from_db()
         if canceled:
             SaleCancellation.objects.create(
                 sale=sale,
@@ -100,11 +115,11 @@ class DashboardMetricsTests(TestCase):
 
         self.assertEqual(metrics["revenue"], Decimal("50.00"))
         self.assertEqual(metrics["sale_count"], 2)
-        self.assertEqual(metrics["expenses"], Decimal("8.00"))
-        self.assertEqual(metrics["expense_count"], 1)
+        self.assertEqual(metrics["expenses"], Decimal("0.00"))
+        self.assertEqual(metrics["expense_count"], 0)
         self.assertEqual(metrics["estimated_margin"], Decimal("12.00"))
         self.assertEqual(metrics["unreliable_line_count"], 1)
-        self.assertEqual(metrics["reported_balance"], Decimal("42.00"))
+        self.assertEqual(metrics["reported_balance"], Decimal("50.00"))
 
     def test_employee_metrics_only_include_their_own_operations(self):
         self.create_sale(self.employee, Decimal("12.00"))
@@ -131,8 +146,8 @@ class DashboardMetricsTests(TestCase):
 
         self.assertEqual(metrics["revenue"], Decimal("12.00"))
         self.assertEqual(metrics["sale_count"], 1)
-        self.assertEqual(metrics["expenses"], Decimal("2.00"))
-        self.assertEqual(metrics["expense_count"], 1)
+        self.assertEqual(metrics["expenses"], Decimal("0.00"))
+        self.assertEqual(metrics["expense_count"], 0)
         self.assertTrue(metrics["employee_scope"])
 
     def test_global_metrics_are_split_by_activity(self):
@@ -154,6 +169,64 @@ class DashboardMetricsTests(TestCase):
         metrics_by_slug = {row["activity"].slug: row for row in rows}
         self.assertEqual(metrics_by_slug[self.activity.slug]["revenue"], Decimal("15.00"))
         self.assertEqual(metrics_by_slug[second_activity.slug]["revenue"], Decimal("0.00"))
+
+    def test_global_item_rankings_separate_revenue_and_reliable_product_margin(self):
+        global_user = User.objects.create_user("item-ranking-global", password="test")
+        ActivityMembership.objects.create(user=global_user, role=Role.GLOBAL)
+        product = Product.objects.create(
+            activity=self.activity,
+            name="Produit marge fiable",
+            slug="produit-marge-fiable-classement",
+            unit="pièce",
+            price=Decimal("20.00"),
+        )
+        service = Service.objects.create(
+            activity=self.activity,
+            name="Prestation recette",
+            slug="prestation-recette-classement",
+            price=Decimal("50.00"),
+        )
+        sale = Sale.objects.create(
+            activity=self.activity,
+            user=self.employee,
+            total=Decimal("70.00"),
+        )
+        SaleLine.objects.create(
+            sale=sale,
+            product=product,
+            quantity=1,
+            unit_price=Decimal("20.00"),
+            cost=Decimal("8.00"),
+            margin_reliable=True,
+            total=Decimal("20.00"),
+        )
+        SaleLine.objects.create(
+            sale=sale,
+            service=service,
+            quantity=1,
+            unit_price=Decimal("50.00"),
+            cost=Decimal("0.00"),
+            margin_reliable=True,
+            total=Decimal("50.00"),
+        )
+
+        rankings = global_item_metrics(global_user, self.today, self.today)
+
+        best_seller = next(
+            item for item in rankings["best_sellers"]
+            if item["name"] == service.name
+        )
+        ranked_product = next(
+            item for item in rankings["profitable_products"]
+            if item["name"] == product.name
+        )
+        self.assertEqual(best_seller["revenue"], Decimal("50.00"))
+        self.assertEqual(best_seller["kind"], "service")
+        self.assertEqual(ranked_product["reliable_margin"], Decimal("12.00"))
+        self.assertNotIn(
+            service.name,
+            [item["name"] for item in rankings["profitable_products"]],
+        )
 
     def test_product_profitability_includes_unsold_items_and_only_reliable_margin(self):
         product = Product.objects.create(

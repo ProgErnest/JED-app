@@ -2,40 +2,45 @@
 {% load static %}
 
 {% block content %}
+<div class="page-shell">
+<nav class="catalog-switch" aria-label="Type de catalogue">
+    <a href="{% url 'catalog:product_list' activity_slug=activity.slug %}">Produits</a>
+    <a href="{% url 'catalog:service_list' activity_slug=activity.slug %}" aria-current="page">Prestations</a>
+</nav>
 <div class="page-heading">
-    <h1>Prestations</h1>
+    <div>
+        <p class="page-kicker">Catalogue</p>
+        <h1>Prestations</h1>
+    </div>
     <a href="{% url 'catalog:service_add' activity_slug=activity.slug %}" class="btn action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Nouvelle prestation</a>
 </div>
 {% if services %}
-<div class="table-responsive mobile-list" role="region" aria-label="Liste des prestations" tabindex="0">
-<table>
-    <thead>
-        <tr>
-            <th data-label="Prestation">Nom</th>
-            <th>Prix</th>
-            <th>Durée</th>
-            <th>Statut</th>
-            <th>Modifié le</th>
-            <th class="actions">Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for service in services %}
-        <tr>
-            <td data-label="Prestation">{{ service.name }}</td>
-            <td data-label="Prix">{{ service.price }} FCFA</td>
-            <td data-label="Durée">{{ service.duration_minutes }} min</td>
-            <td data-label="Statut">{{ service.is_active|yesno:"Actif,Inactif" }}</td>
-            <td data-label="Modifiée le">{{ service.updated_at|date:"d/m/Y H:i" }}</td>
-            <td class="actions">
-                <a href="{% url 'catalog:service_edit' activity_slug=activity.slug slug=service.slug %}" class="btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>Modifier</a>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
- </div>
+<ul class="product-grid service-grid" aria-label="Prestations de l’activité {{ activity.name }}">
+    {% for service in services %}
+    <li class="product-card service-card">
+        <div class="product-card__heading">
+            <h2>{{ service.name }}</h2>
+            <span class="product-card__unit">{{ service.duration_minutes }} min</span>
+        </div>
+        <div class="product-card__prices service-card__prices">
+            <div class="product-price product-price--sale">
+                <span class="product-price__label">Prix de la prestation</span>
+                <strong>{{ service.price|floatformat:"-2g" }} <span>FCFA</span></strong>
+            </div>
+            <div class="product-price service-card__duration">
+                <span class="product-price__label">Durée</span>
+                <strong>{{ service.duration_minutes }} <span>minutes</span></strong>
+            </div>
+        </div>
+        <a href="{% url 'catalog:service_edit' activity_slug=activity.slug slug=service.slug %}" class="product-card__edit" aria-label="Modifier {{ service.name }}">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>
+            Modifier
+        </a>
+    </li>
+    {% endfor %}
+</ul>
 {% else %}
 <p class="empty-state">Aucune prestation enregistrée. Ajoutez la première prestation pour commencer.</p>
 {% endif %}
+</div>
 {% endblock %}

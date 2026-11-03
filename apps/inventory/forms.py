@@ -38,15 +38,20 @@ class StockEntryForm(forms.ModelForm):
 class StockCorrectionForm(forms.ModelForm):
     """Saisie d'une correction/perte de stock (JED-06).
 
-    Le motif est obligatoire. La quantité est signée : positive pour un
-    ajout, négative pour une perte.
+    L'utilisateur saisit le stock réellement compté. Le service calcule ensuite
+    l'écart signé à appliquer. Le motif est obligatoire.
     """
+
+    counted_quantity = forms.IntegerField(
+        label="Quantité réellement comptée",
+        min_value=0,
+        widget=forms.NumberInput(attrs={"min": "0", "step": "1"}),
+    )
 
     class Meta:
         model = StockMovement
-        fields = ["product", "quantity", "reason", "movement_type"]
+        fields = ["product", "reason", "movement_type"]
         widgets = {
-            "quantity": forms.NumberInput(attrs={"step": "1"}),
             "reason": forms.TextInput(),
             "movement_type": forms.HiddenInput(),
         }
@@ -59,6 +64,7 @@ class StockCorrectionForm(forms.ModelForm):
             )
         self.fields["movement_type"].required = False
         self.fields["reason"].required = True
+        self.order_fields(["product", "counted_quantity", "reason", "movement_type"])
 
     def clean(self):
         cleaned = super().clean()

@@ -6,11 +6,14 @@ utilisateur ne peut saisir des mouvements que pour ses activités autorisées.
 
 from __future__ import annotations
 
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
+from django.core.paginator import Paginator
+from django.db.models import Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils.dateparse import parse_date
 from django.utils import timezone
 from django.views import View
 from django.views.generic import CreateView, DetailView, ListView
@@ -37,17 +40,25 @@ def products_with_daily_sales(activity):
         .annotate(quantity_sold=Sum("quantity"))
         .values("quantity_sold")[:1]
     )
+    purchase_entries = StockMovement.objects.filter(
+        product_id=OuterRef("pk"),
+        movement_type=StockMovement.MovementType.ENTRY,
+        unit_cost__isnull=False,
+    )
     return Product.objects.filter(activity=activity).annotate(
         daily_sold=Coalesce(
             Subquery(daily_sales, output_field=IntegerField()),
             Value(0),
             output_field=IntegerField(),
-        )
+        ),
+        has_zero_purchase_cost=Exists(purchase_entries.filter(unit_cost=0)),
+        has_positive_purchase_cost=Exists(purchase_entries.filter(unit_cost__gt=0)),
+        unit_margin=F("price") - F("average_cost"),
     )
 
 
 class StockMovementListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView):
-    model = StockMovement
+    model = Product
     template_name = "inventory/stock_overview.html"
     context_object_name = "products"
     activity_slug_kwarg = "activity_slug"
@@ -113,15 +124,25 @@ class ProductStockDetailView(LoginRequiredMixin, ActivityAccessRequiredMixin, De
         self.date_from = self.request.GET.get("from", "")
         self.date_to = self.request.GET.get("to", "")
         self.movement_search = self.request.GET.get("q", "").strip()
+        self.date_error = ""
         valid_types = {choice[0] for choice in StockMovement.MovementType.choices}
         if self.movement_type in valid_types:
             movements = movements.filter(movement_type=self.movement_type)
         else:
             self.movement_type = "all"
-        if self.date_from:
-            movements = movements.filter(created_at__date__gte=self.date_from)
-        if self.date_to:
-            movements = movements.filter(created_at__date__lte=self.date_to)
+        try:
+            parsed_date_from = parse_date(self.date_from) if self.date_from else None
+            parsed_date_to = parse_date(self.date_to) if self.date_to else None
+        except ValueError:
+            parsed_date_from = None
+            parsed_date_to = None
+        if self.date_from and not parsed_date_from or self.date_to and not parsed_date_to:
+            self.date_error = "Vérifiez les dates du filtre."
+        else:
+            if parsed_date_from:
+                movements = movements.filter(created_at__date__gte=parsed_date_from)
+            if parsed_date_to:
+                movements = movements.filter(created_at__date__lte=parsed_date_to)
         if self.movement_search:
             movements = movements.filter(
                 Q(reason__icontains=self.movement_search)
@@ -130,19 +151,26 @@ class ProductStockDetailView(LoginRequiredMixin, ActivityAccessRequiredMixin, De
                 | Q(user__last_name__icontains=self.movement_search)
             )
 
+        movement_count = movements.count()
+        page = Paginator(movements.order_by("-created_at"), 50).get_page(
+            self.request.GET.get("page")
+        )
+        page_query = self.request.GET.copy()
+        page_query.pop("page", None)
         context.update(
             {
                 "activity": self.activity,
-                "movements": movements.order_by("-created_at"),
+                "movements": page.object_list,
+                "page_obj": page,
+                "paginator": page.paginator,
                 "movement_type": self.movement_type,
                 "date_from": self.date_from,
                 "date_to": self.date_to,
                 "movement_search": self.movement_search,
+                "date_error": self.date_error,
                 "movement_types": StockMovement.MovementType.choices,
-                "movement_count": movements.count(),
-                "movement_totals": movements.values("movement_type").annotate(
-                    quantity=Sum("quantity"), count=Count("pk")
-                ),
+                "movement_count": movement_count,
+                "page_query": page_query.urlencode(),
             }
         )
         return context
@@ -156,9 +184,11 @@ class StockEntryCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, Crea
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["activity"] = get_object_or_404(
-            Activity, slug=self.kwargs["activity_slug"]
-        )
+        activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        kwargs["activity"] = activity
+        product_id = self.request.GET.get("product")
+        if product_id and Product.objects.filter(pk=product_id, activity=activity).exists():
+            kwargs.setdefault("initial", {})["product"] = product_id
         return kwargs
 
     def get_context_data(self, **kwargs):
@@ -211,17 +241,28 @@ class StockCorrectionCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin,
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["activity"] = get_object_or_404(
-            Activity, slug=self.kwargs["activity_slug"]
-        )
+        activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        kwargs["activity"] = activity
+        product_id = self.request.GET.get("product")
+        if product_id and Product.objects.filter(pk=product_id, activity=activity).exists():
+            kwargs.setdefault("initial", {})["product"] = product_id
         return kwargs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        product_id = self.request.GET.get("product") or self.request.POST.get("product")
+        current_product = None
+        if product_id:
+            current_product = Product.objects.filter(
+                pk=product_id,
+                activity=activity,
+            ).first()
         context["activity"] = get_object_or_404(
             Activity, slug=self.kwargs["activity_slug"]
         )
         context["page_title"] = "Correction de stock"
+        context["current_product"] = current_product
         return context
 
     def form_valid(self, form):
@@ -230,21 +271,32 @@ class StockCorrectionCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin,
         )
         form.instance.user = self.request.user
         try:
-            record_stock_movement(
+            corrected_product = record_stock_movement(
                 product=form.instance.product,
                 movement_type=form.instance.movement_type,
-                quantity=form.instance.quantity,
                 unit_cost=None,
                 user=self.request.user,
                 reason=form.instance.reason,
                 activity=form.instance.activity,
+                counted_quantity=form.cleaned_data["counted_quantity"],
             )
         except Exception as exc:  # pragma: no cover - validation métier
             form.add_error(None, str(exc))
             return self.form_invalid(form)
+        if corrected_product._last_stock_movement is None:
+            messages.info(
+                self.request,
+                "Aucune correction nécessaire : le stock compté correspond au stock enregistré.",
+            )
+        else:
+            messages.success(
+                self.request,
+                f"Comptage enregistré. Écart appliqué : {corrected_product._last_stock_movement.quantity:+d}.",
+            )
         return redirect(
-            "inventory:movement_list",
+            "inventory:product_stock_detail",
             activity_slug=self.kwargs["activity_slug"],
+            product_slug=form.instance.product.slug,
         )
 
     def get_success_url(self):

@@ -11,9 +11,10 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils.dateparse import parse_date
 from django.views.generic import ListView, DetailView, View
 
 from apps.activities.models import Activity
@@ -43,11 +44,46 @@ class SaleListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView):
         )
         if user_is_employee_in_activity(self.request.user, self.activity):
             queryset = queryset.filter(user=self.request.user)
+        self.search_query = self.request.GET.get("q", "").strip()
+        self.status_filter = self.request.GET.get("status", "all")
+        self.date_from = self.request.GET.get("from", "")
+        self.date_to = self.request.GET.get("to", "")
+        self.date_error = ""
+        if self.search_query:
+            search = Q(user__username__icontains=self.search_query)
+            search |= Q(user__first_name__icontains=self.search_query)
+            search |= Q(user__last_name__icontains=self.search_query)
+            if self.search_query.isdigit():
+                search |= Q(pk=int(self.search_query))
+            queryset = queryset.filter(search)
+        if self.status_filter == "active":
+            queryset = queryset.filter(_is_canceled=False)
+        elif self.status_filter == "canceled":
+            queryset = queryset.filter(_is_canceled=True)
+        else:
+            self.status_filter = "all"
+        try:
+            parsed_from = parse_date(self.date_from) if self.date_from else None
+            parsed_to = parse_date(self.date_to) if self.date_to else None
+        except ValueError:
+            parsed_from = parsed_to = None
+        if (self.date_from and not parsed_from) or (self.date_to and not parsed_to):
+            self.date_error = "Vérifiez les dates sélectionnées."
+        else:
+            if parsed_from:
+                queryset = queryset.filter(created_at__date__gte=parsed_from)
+            if parsed_to:
+                queryset = queryset.filter(created_at__date__lte=parsed_to)
         return queryset.select_related("user").order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["activity"] = self.activity
+        context["search_query"] = self.search_query
+        context["status_filter"] = self.status_filter
+        context["date_from"] = self.date_from
+        context["date_to"] = self.date_to
+        context["date_error"] = self.date_error
         return context
 
 
@@ -225,8 +261,10 @@ class SaleCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, View):
 
         products = Product.objects.filter(
             activity=self.activity, is_active=True, stock_quantity__gt=0
-        )
-        services = Service.objects.filter(activity=self.activity, is_active=True)
+        ).order_by("name")
+        services = Service.objects.filter(
+            activity=self.activity, is_active=True
+        ).order_by("name")
         return TemplateResponse(
             request,
             self.template_name,
@@ -235,6 +273,28 @@ class SaleCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, View):
                 "formset": formset,
                 "products": products,
                 "services": services,
+                "sale_catalog": [
+                    {
+                        "key": f"product:{product.pk}",
+                        "type": "product",
+                        "name": product.name,
+                        "price": str(product.price),
+                        "unit": product.unit,
+                        "stock": product.stock_quantity,
+                    }
+                    for product in products
+                ]
+                + [
+                    {
+                        "key": f"service:{service.pk}",
+                        "type": "service",
+                        "name": service.name,
+                        "price": str(service.price),
+                        "unit": "prestation",
+                        "stock": None,
+                    }
+                    for service in services
+                ],
                 "stock_by_product": {
                     str(product.pk): product.stock_quantity for product in products
                 },

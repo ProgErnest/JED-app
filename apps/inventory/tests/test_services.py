@@ -38,6 +38,15 @@ class RecordStockMovementTests(TestCase):
             user=self.user,
         )
 
+    def record_count(self, counted_quantity):
+        return record_stock_movement(
+            product=self.product,
+            movement_type=StockMovement.MovementType.CORRECTION,
+            counted_quantity=counted_quantity,
+            user=self.user,
+            reason="Comptage physique",
+        )
+
     def test_successive_entries_update_weighted_average_and_movement(self):
         self.record_entry(10, Decimal("4.00"))
 
@@ -75,6 +84,40 @@ class RecordStockMovementTests(TestCase):
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 6)
         self.assertEqual(self.product.average_cost, Decimal("7.00"))
+
+    def test_physical_count_applies_difference_and_records_counted_quantity(self):
+        corrected = self.record_count(7)
+
+        self.product.refresh_from_db()
+        movement = StockMovement.objects.get()
+        self.assertEqual(self.product.stock_quantity, 7)
+        self.assertEqual(movement.quantity, -3)
+        self.assertEqual(movement.counted_quantity, 7)
+        self.assertEqual(corrected._last_stock_movement, movement)
+
+    def test_physical_count_can_increase_stock_and_count_zero(self):
+        corrected = self.record_count(14)
+        self.assertEqual(corrected.stock_quantity, 14)
+        self.assertEqual(corrected._last_stock_movement.quantity, 4)
+
+        corrected = self.record_count(0)
+        self.assertEqual(corrected.stock_quantity, 0)
+        self.assertEqual(corrected._last_stock_movement.quantity, -14)
+        self.assertEqual(corrected._last_stock_movement.counted_quantity, 0)
+
+    def test_unchanged_physical_count_does_not_create_movement(self):
+        corrected = self.record_count(10)
+
+        self.assertEqual(corrected.stock_quantity, 10)
+        self.assertIsNone(corrected._last_stock_movement)
+        self.assertTrue(corrected._stock_count_unchanged)
+        self.assertEqual(StockMovement.objects.count(), 0)
+
+    def test_physical_count_rejects_negative_quantity(self):
+        with self.assertRaises(ValidationError):
+            self.record_count(-1)
+
+        self.assert_product_unchanged()
 
     def test_rejects_activity_that_does_not_match_product(self):
         self.assert_rejected_without_changes(

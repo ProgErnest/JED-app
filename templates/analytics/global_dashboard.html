@@ -1,117 +1,56 @@
 {% extends "catalog/base.html" %}
 {% load static %}
 
-{% block title %}Indicateurs globaux{% endblock %}
+{% block title %}Pilotage global{% endblock %}
 
 {% block content %}
-<div class="page-shell">
-  <div class="page-heading">
-    <div>
-      <p class="page-kicker">Pilotage</p>
-      <h1>Vue globale</h1>
+<div class="page-shell global-dashboard">
+  <header class="global-dashboard__header">
+    <div><h1>Pilotage</h1><p>{{ start_date|date:"j F Y" }}{% if start_date != end_date %} au {{ end_date|date:"j F Y" }}{% endif %}</p></div>
+    <nav class="period-switch" aria-label="Période des indicateurs">
+      <a href="?period=day" {% if period == "day" %}aria-current="page"{% endif %}>Jour</a>
+      <a href="?period=week" {% if period == "week" %}aria-current="page"{% endif %}>Semaine</a>
+      <a href="?period=month" {% if period == "month" %}aria-current="page"{% endif %}>Mois</a>
+    </nav>
+  </header>
+
+  <section class="global-summary" aria-label="Résumé de la période">
+    <div class="global-summary__lead"><span>Ventes enregistrées</span><strong>{{ totals.revenue|floatformat:0 }} <small>FCFA</small></strong><p>{{ totals.sale_count }} tickets actifs</p></div>
+    <div class="global-summary__stat"><span>Évolution vs période précédente</span><strong class="{% if totals.revenue_change > 0 %}is-positive{% elif totals.revenue_change < 0 %}is-negative{% endif %}">{% if totals.revenue_change > 0 %}+{% endif %}{{ totals.revenue_change|floatformat:0 }} FCFA</strong>{% if totals.revenue_change_percent != None %}<small>{% if totals.revenue_change_percent > 0 %}+{% endif %}{{ totals.revenue_change_percent|floatformat:1 }} %</small>{% else %}<small>Pas de période comparable</small>{% endif %}</div>
+    <div class="global-summary__stat"><span>Marge brute produits fiable</span><strong>{{ totals.estimated_margin|floatformat:0 }} FCFA</strong><small>Coûts connus uniquement</small></div>
+    <div class="global-summary__stat"><span>Achats de stock</span><strong>{{ totals.stock_purchases|floatformat:0 }} FCFA</strong><small>{{ totals.stock_entry_count }} approvisionnements · séparés de la marge</small></div>
+  </section>
+
+  <section class="dashboard-section global-section" aria-labelledby="activity-comparison-title">
+    <div class="section-heading"><h2 id="activity-comparison-title">Activités</h2><span>Ventes et marge fiable sur la période</span></div>
+    <div class="activity-rows">
+      {% for row in rows %}
+      <a class="activity-row" href="{% url 'analytics:activity-dashboard' row.activity.slug %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">
+        <span class="activity-row__name">{{ row.activity.name }}</span><span class="activity-row__revenue">{{ row.revenue|floatformat:0 }} <small>FCFA</small></span><span class="activity-row__tickets">{{ row.sale_count }} tickets</span><span class="activity-row__margin">Marge fiable <strong>{{ row.estimated_margin|floatformat:0 }} FCFA</strong></span>
+        <span class="activity-row__change {% if row.revenue_change > 0 %}is-positive{% elif row.revenue_change < 0 %}is-negative{% endif %}">{% if row.revenue_change > 0 %}+{% endif %}{{ row.revenue_change|floatformat:0 }} FCFA<small>vs période précédente</small></span><span class="activity-row__link">Détails <span aria-hidden="true">›</span></span>
+      </a>
+      {% empty %}<p class="empty-state">Aucune activité active.</p>{% endfor %}
     </div>
+  </section>
+
+  <div class="global-rankings">
+    <section class="dashboard-section global-section" aria-labelledby="best-sellers-title">
+      <div class="section-heading"><h2 id="best-sellers-title">Les plus vendus</h2><span>Produits et prestations · par recettes</span></div>
+      <ol class="ranking-list">{% for item in item_rankings.best_sellers %}<li><span class="ranking-list__rank">{{ forloop.counter }}</span><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {% if item.kind == "product" %}Produit{% else %}Prestation{% endif %} · {{ item.quantity }} vendu(s)</small></span><strong class="ranking-list__value">{{ item.revenue|floatformat:0 }} <small>FCFA</small></strong></li>{% empty %}<li class="ranking-list__empty">Aucune vente sur cette période.</li>{% endfor %}</ol>
+    </section>
+    <section class="dashboard-section global-section" aria-labelledby="margin-ranking-title">
+      <div class="section-heading"><h2 id="margin-ranking-title">Marge des produits</h2><span>Coûts fiables uniquement</span></div>
+      <h3>Meilleures marges</h3>
+      <ol class="ranking-list ranking-list--compact">{% for item in item_rankings.profitable_products %}<li><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {{ item.reliable_line_count }} ligne(s) fiable(s)</small></span><strong class="ranking-list__value">{{ item.reliable_margin|floatformat:0 }} FCFA</strong></li>{% empty %}<li class="ranking-list__empty">Pas assez de coûts fiables pour classer les produits.</li>{% endfor %}</ol>
+      <h3 class="ranking-subtitle">Marges les plus faibles</h3>
+      <ol class="ranking-list ranking-list--compact">{% for item in item_rankings.low_margin_products %}<li><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {{ item.reliable_line_count }} ligne(s) fiable(s)</small></span><strong class="ranking-list__value {% if item.reliable_margin < 0 %}is-negative{% endif %}">{{ item.reliable_margin|floatformat:0 }} FCFA</strong></li>{% empty %}<li class="ranking-list__empty">Pas assez de coûts fiables pour classer les produits.</li>{% endfor %}</ol>
+    </section>
   </div>
-  <section aria-labelledby="today-heading" class="dashboard-section">
-    <div class="section-heading">
-      <div>
-        <h2 id="today-heading">Aujourd’hui</h2>
-        <p class="text-muted">{{ today_date|date:"l j F Y" }}</p>
-      </div>
-    </div>
-    <dl class="metric-grid">
-      <div class="metric-card" data-tone="green"><dt>Ventes enregistrées</dt><dd>{{ today_totals.revenue|floatformat:2 }} FCFA</dd><small>{{ today_totals.sale_count }} tickets actifs</small><span class="metric-status">Revenus</span></div>
-      <div class="metric-card" data-tone="amber"><dt>Dépenses déclarées</dt><dd>{{ today_totals.expenses|floatformat:2 }} FCFA</dd><small>{{ today_totals.expense_count }} dépenses actives</small><span class="metric-status">Charges</span></div>
-      <div class="metric-card" data-tone="navy"><dt>Achats de stock</dt><dd>{{ today_totals.stock_purchases|floatformat:2 }} FCFA</dd><small>{{ today_totals.stock_entry_count }} approvisionnements</small><span class="metric-status">Logistique</span></div>
-      <div class="metric-card" data-tone="red"><dt>Ventes moins dépenses déclarées</dt><dd>{{ today_totals.reported_balance|floatformat:2 }} FCFA</dd><small>Solde indicatif, pas un bénéfice comptable</small><span class="metric-status">Indicatif</span></div>
-    </dl>
+
+  <section class="dashboard-section global-section" aria-labelledby="employee-summary-title">
+    <div class="section-heading"><h2 id="employee-summary-title">Équipe</h2><span>Ventes par employé et activité</span></div>
+    <div class="employee-rows">{% for employee in employees %}<div class="employee-row"><strong>{{ employee.full_name }}</strong><span>{{ employee.activity }}</span><span>{{ employee.sale_count }} tickets</span><strong>{{ employee.revenue|floatformat:0 }} FCFA</strong></div>{% empty %}<p class="empty-state">Aucune vente enregistrée sur cette période.</p>{% endfor %}</div>
   </section>
-
-  <section aria-labelledby="period-heading" class="dashboard-section">
-  <div class="section-heading"><h2 id="period-heading">Résultats par activité</h2></div>
-  <form method="get" class="row align-items-end mb-4 inline-form period-filter">
-    <div class="col-12 col-sm-auto form-group">
-      <label class="form-label" for="start">Du</label>
-      <input class="form-control" type="date" id="start" name="start" value="{{ start_date|date:'Y-m-d' }}" required>
-    </div>
-    <div class="col-12 col-sm-auto form-group">
-      <label class="form-label" for="end">Au</label>
-      <input class="form-control" type="date" id="end" name="end" value="{{ end_date|date:'Y-m-d' }}" required>
-    </div>
-    <div class="col-12 col-sm-auto"><button class="btn btn-primary action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-filter"></use></svg>Afficher</button></div>
-  </form>
-
-  <p class="period-caption">Du {{ start_date|date:"d/m/Y" }} au {{ end_date|date:"d/m/Y" }}</p>
-
-  <div class="table-responsive mobile-list" role="region" aria-label="Résultats financiers par activité" tabindex="0">
-    <table class="table table-striped align-middle">
-      <thead><tr><th>Activité</th><th>Ventes</th><th>Tickets</th><th>Dépenses déclarées</th><th>Achats de stock</th><th>Marge brute estimée</th><th>Après dépenses déclarées</th></tr></thead>
-      <tbody>
-        {% for row in rows %}
-          <tr>
-            <th scope="row"><a href="{% url 'analytics:activity-dashboard' row.activity.slug %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.activity.name }}</a></th>
-            <td data-label="Ventes">{{ row.revenue|floatformat:2 }} FCFA</td>
-            <td data-label="Tickets">{{ row.sale_count }}</td>
-            <td data-label="Dépenses déclarées">{{ row.expenses|floatformat:2 }} FCFA ({{ row.expense_count }})</td>
-            <td data-label="Achats de stock">{{ row.stock_purchases|floatformat:2 }} FCFA</td>
-            <td data-label="Marge estimée">{{ row.estimated_margin|floatformat:2 }} FCFA</td>
-            <td data-label="Après dépenses">{{ row.reported_balance|floatformat:2 }} FCFA</td>
-          </tr>
-        {% empty %}
-          <tr><td colspan="7" class="text-muted">Aucune activité active.</td></tr>
-        {% endfor %}
-      </tbody>
-      {% if rows %}
-      <tfoot><tr class="fw-bold"><th>Total</th><td data-label="Ventes">{{ totals.revenue|floatformat:2 }} FCFA</td><td data-label="Tickets">—</td><td data-label="Dépenses">{{ totals.expenses|floatformat:2 }} FCFA</td><td data-label="Achats de stock">{{ totals.stock_purchases|floatformat:2 }} FCFA</td><td data-label="Marge estimée">{{ totals.estimated_margin|floatformat:2 }} FCFA</td><td data-label="Après dépenses">{{ totals.reported_balance|floatformat:2 }} FCFA</td></tr></tfoot>
-      {% endif %}
-    </table>
-  </div>
-  <p class="small text-muted">La marge est estimée à partir des coûts fiables enregistrés. Le dernier montant compare ventes et dépenses déclarées uniquement; il ne constitue pas un bénéfice net comptable.</p>
-  </section>
-
-  <section aria-labelledby="employees-heading" class="dashboard-section">
-    <div class="section-heading"><h2 id="employees-heading">Activité des employés</h2></div>
-    <p class="small text-muted">Opérations enregistrées par personne du {{ start_date|date:"d/m/Y" }} au {{ end_date|date:"d/m/Y" }}.</p>
-    <div class="table-responsive mobile-list" role="region" aria-label="Activité par employé" tabindex="0">
-      <table>
-        <thead><tr><th>Employé</th><th>Activité</th><th>Ventes</th><th>Recettes</th><th>Dépenses déclarées</th><th>Achats de stock</th><th>Dernière opération</th></tr></thead>
-        <tbody>
-          {% for employee in employees %}
-          <tr>
-            <th scope="row">{{ employee.full_name }}</th>
-            <td data-label="Activité">{{ employee.activity }}</td>
-            <td data-label="Ventes">{{ employee.sale_count }}</td>
-            <td data-label="Recettes">{{ employee.revenue|floatformat:2 }} FCFA</td>
-            <td data-label="Dépenses déclarées">{{ employee.expenses|floatformat:2 }} FCFA ({{ employee.expense_count }})</td>
-            <td data-label="Achats de stock">{{ employee.stock_purchases|floatformat:2 }} FCFA</td>
-            <td data-label="Dernière opération"><time datetime="{{ employee.last_operation|date:'c' }}">{{ employee.last_operation|date:"d/m/Y H:i" }}</time></td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="7" class="text-muted">Aucune opération enregistrée sur cette période.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section aria-labelledby="operations-heading" class="dashboard-section">
-    <div class="section-heading"><h2 id="operations-heading">Dernières opérations</h2></div>
-    <ol class="operation-list">
-      {% for operation in recent_operations %}
-      <li class="operation-row operation-{{ operation.kind }}">
-        <div class="operation-main">
-          {% if operation.url %}<a href="{{ operation.url }}"><strong>{{ operation.label }}</strong></a>{% else %}<strong>{{ operation.label }}</strong>{% endif %}
-          <span>{{ operation.activity.name }} · {{ operation.detail }}</span>
-        </div>
-        <div class="operation-meta">
-          <span>{{ operation.user.get_full_name|default:operation.user.username }}</span>
-          <time datetime="{{ operation.created_at|date:'c' }}">{{ operation.created_at|date:"d/m H:i" }}</time>
-        </div>
-        {% if operation.amount != None %}<strong class="operation-amount {% if operation.amount < 0 %}negative{% endif %}">{% if operation.amount > 0 %}+{% endif %}{{ operation.amount|floatformat:2 }} FCFA</strong>{% endif %}
-      </li>
-      {% empty %}
-      <li class="empty-state">Aucune opération enregistrée.</li>
-      {% endfor %}
-    </ol>
-  </section>
+  <p class="dashboard-note">Les marges concernent uniquement les produits vendus avec un coût fiable. Les prestations sont classées par recettes, sans estimation de marge. Les achats de stock sont affichés séparément.</p>
 </div>
 {% endblock %}

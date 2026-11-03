@@ -2,20 +2,19 @@
 {% load static %}
 
 {% block content %}
-<div class="page-heading"><h1>{% if object %}Modifier une prestation{% else %}Nouvelle prestation{% endif %}</h1></div>
+<div class="page-heading">
+    <div>
+        <p class="page-kicker">Catalogue · Prestations</p>
+        <h1>{% if object %}Modifier une prestation{% else %}Nouvelle prestation{% endif %}</h1>
+    </div>
+</div>
 <form method="post" novalidate class="form-panel">
     {% csrf_token %}
-    <div class="form-row">
-        <div class="form-group">
-            {{ form.name.label_tag }}
-            {{ form.name }}
-            {{ form.name.errors }}
-        </div>
-        <div class="form-group">
-            {{ form.slug.label_tag }}
-            {{ form.slug }}
-            {{ form.slug.errors }}
-        </div>
+    {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="form-group">
+        {{ form.name.label_tag }}
+        {{ form.name }}
+        {{ form.name.errors }}
     </div>
     <div class="form-row">
         <div class="form-group">
@@ -35,15 +34,15 @@
         {{ form.description }}
         {{ form.description.errors }}
     </div>
+    {% if object %}
     <div class="form-group checkbox-row">
         {{ form.is_active }}
         <label for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
         {{ form.is_active.errors }}
     </div>
-    {% if object %}
     <p class="hint">La modification du prix conserve l'historique des prix précédents.</p>
     {% endif %}
-    <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-check"></use></svg>Enregistrer</button>
+    <button class="action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-check"></use></svg>{% if object %}Enregistrer{% else %}Créer la prestation{% endif %}</button>
     <a href="{% url 'catalog:service_list' activity_slug=activity.slug %}" class="cancel btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-back"></use></svg>Annuler</a>
 </form>
 {% endblock %}

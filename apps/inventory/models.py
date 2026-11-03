@@ -31,6 +31,12 @@ class StockMovement(models.Model):
     )
     movement_type = models.CharField("type de mouvement", max_length=20, choices=MovementType.choices)
     quantity = models.IntegerField("quantité", help_text="Positif = entrée, négatif = sortie.")
+    counted_quantity = models.PositiveIntegerField(
+        "quantité réellement comptée",
+        null=True,
+        blank=True,
+        help_text="Présente pour les corrections effectuées après un comptage physique.",
+    )
     unit_cost = models.DecimalField(
         "coût unitaire",
         max_digits=10,

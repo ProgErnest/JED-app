@@ -1,0 +1,115 @@
+{% extends "catalog/base.html" %}
+{% load static %}
+
+{% block title %}{{ product.name }} — Stock{% endblock %}
+
+{% block content %}
+<div class="page-shell stock-page">
+    <a class="stock-back-link" href="{% url 'inventory:movement_list' activity_slug=activity.slug %}">‹ Retour à l’état du stock</a>
+    <div class="page-heading stock-heading stock-detail-heading">
+        <div>
+            <p class="page-kicker">{{ activity.name }} · Stock produit</p>
+            <h1>{{ product.name }}</h1>
+            <p class="text-muted">Mesures par {{ product.unit }}</p>
+        </div>
+        <div class="stock-heading__actions">
+            <a href="{% url 'inventory:movement_entry_add' activity_slug=activity.slug %}?product={{ product.pk }}" class="btn action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Approvisionner</a>
+            <a href="{% url 'inventory:movement_correction_add' activity_slug=activity.slug %}?product={{ product.pk }}" class="btn btn-secondary action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>Corriger</a>
+        </div>
+    </div>
+
+    {% if product.stock_quantity <= 0 %}
+    <aside class="stock-advice stock-advice--out"><strong>Vente impossible</strong><span>Le stock est épuisé. Enregistrez un approvisionnement avant de reprendre les ventes.</span></aside>
+    {% elif product.stock_quantity > 0 and product.average_cost > 0 and product.price <= product.average_cost %}
+    <aside class="stock-advice stock-advice--margin"><strong>Prix de vente à vérifier</strong><span>Le prix actuel est inférieur ou égal au coût moyen d’achat. Vérifiez le prix avant de continuer à vendre.</span></aside>
+    {% elif product.daily_sold > 0 and product.stock_quantity <= product.daily_sold %}
+    <aside class="stock-advice stock-advice--low"><strong>Approvisionnement à prévoir</strong><span>Le stock restant est inférieur ou égal à la quantité vendue aujourd’hui.</span></aside>
+    {% else %}
+    <aside class="stock-advice stock-advice--ok"><strong>Vente possible</strong><span>Le stock est disponible{% if product.stock_quantity > 0 and product.average_cost > 0 %} et le prix de vente couvre le coût moyen d’achat{% endif %}.</span></aside>
+    {% endif %}
+
+    <section class="stock-metrics" aria-label="Résumé du produit">
+        <div class="stock-metric stock-metric--primary">
+            <span>Stock restant</span>
+            <strong class="{% if product.stock_quantity <= 0 %}is-empty{% elif product.stock_quantity <= product.daily_sold and product.daily_sold > 0 %}is-low{% endif %}">{{ product.stock_quantity|floatformat:"-0g" }} <small>{{ product.unit }}</small></strong>
+            {% if product.stock_quantity <= 0 %}<p>Rupture : aucune vente possible</p>{% elif product.daily_sold > 0 and product.stock_quantity <= product.daily_sold %}<p>À surveiller : stock inférieur ou égal aux ventes du jour</p>{% else %}<p>Disponible pour la vente</p>{% endif %}
+        </div>
+        <div class="stock-metric">
+            <span>Vendu aujourd’hui</span>
+            <strong>{{ product.daily_sold|floatformat:"-0g" }} <small>{{ product.unit }}</small></strong>
+            <p>Tickets non annulés</p>
+        </div>
+        <div class="stock-metric">
+            <span>Coût moyen d’achat</span>
+            {% if product.stock_quantity > 0 and product.average_cost > 0 or product.stock_quantity > 0 and product.has_zero_purchase_cost and not product.has_positive_purchase_cost %}<strong>{{ product.average_cost|floatformat:"-2g" }} <small>FCFA / unité</small></strong><p>Calculé sur le stock disponible</p>{% else %}<strong class="stock-metric__unknown">Non fiable</strong><p>Stock nul ou coût non renseigné</p>{% endif %}
+        </div>
+        <div class="stock-metric">
+            <span>Prix de vente</span>
+            <strong>{{ product.price|floatformat:"-2g" }} <small>FCFA / unité</small></strong>
+            <p>{% if product.stock_quantity > 0 and product.average_cost > 0 or product.stock_quantity > 0 and product.has_zero_purchase_cost and not product.has_positive_purchase_cost %}Écart indicatif : {{ product.unit_margin|floatformat:"-2g" }} FCFA / unité{% else %}Prix catalogue actuel{% endif %}</p>
+        </div>
+    </section>
+
+    <div class="stock-history-heading">
+        <div><h2>Mouvements du produit</h2><p>{{ movement_count }} mouvement{% if movement_count != 1 %}s{% endif %} correspondant aux filtres</p></div>
+    </div>
+    <form method="get" class="movement-filters">
+        <div class="movement-filters__search">
+            <label for="movement-query">Motif ou personne</label>
+            <input id="movement-query" name="q" type="search" value="{{ movement_search }}" placeholder="Rechercher">
+        </div>
+        <div>
+            <label for="movement-type">Type de mouvement</label>
+            <select id="movement-type" name="type">
+                <option value="all" {% if movement_type == "all" %}selected{% endif %}>Tous les types</option>
+                {% for value, label in movement_types %}<option value="{{ value }}" {% if movement_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div><label for="movement-from">Du</label><input id="movement-from" type="date" name="from" value="{{ date_from }}"></div>
+        <div><label for="movement-to">Au</label><input id="movement-to" type="date" name="to" value="{{ date_to }}"></div>
+        <button type="submit" class="btn">Filtrer</button>
+        {% if movement_search or movement_type != "all" or date_from or date_to %}<a class="movement-filters__reset" href="{% url 'inventory:product_stock_detail' activity_slug=activity.slug product_slug=product.slug %}">Effacer</a>{% endif %}
+    </form>
+    {% if date_error %}<p class="stock-filter-error" role="alert">{{ date_error }}</p>{% endif %}
+
+    {% if movements %}
+    <div class="movement-desktop" role="region" aria-label="Historique des mouvements" tabindex="0">
+        <table class="stock-table movement-table">
+            <thead><tr><th>Date et heure</th><th>Mouvement</th><th>Quantité</th><th>Coût unitaire</th><th>Motif</th><th>Enregistré par</th></tr></thead>
+            <tbody>
+                {% for movement in movements %}
+                <tr>
+                    <td>{{ movement.created_at|date:"d/m/Y H:i" }}</td>
+                    <td><span class="movement-type movement-type--{{ movement.movement_type|lower }}">{{ movement.get_movement_type_display }}</span></td>
+                    <td><strong class="{% if movement.quantity < 0 %}movement-quantity--negative{% else %}movement-quantity--positive{% endif %}">{% if movement.quantity > 0 %}+{% endif %}{{ movement.quantity|floatformat:"-0g" }}</strong> {{ product.unit }}{% if movement.counted_quantity != None %}<small class="movement-counted">Compté : {{ movement.counted_quantity }} {{ product.unit }}</small>{% endif %}</td>
+                    <td>{% if movement.unit_cost != None %}{{ movement.unit_cost|floatformat:"-2g" }} FCFA{% else %}—{% endif %}</td>
+                    <td>{{ movement.reason|default:"—" }}</td>
+                    <td>{{ movement.user.get_full_name|default:movement.user.username }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <ol class="movement-mobile" aria-label="Historique des mouvements">
+        {% for movement in movements %}
+        <li class="movement-item movement-item--{{ movement.movement_type|lower }}">
+            <div class="movement-item__top"><span class="movement-type movement-type--{{ movement.movement_type|lower }}">{{ movement.get_movement_type_display }}</span><time datetime="{{ movement.created_at|date:'c' }}">{{ movement.created_at|date:"d/m/Y · H:i" }}</time></div>
+            <strong class="movement-item__quantity {% if movement.quantity < 0 %}movement-quantity--negative{% else %}movement-quantity--positive{% endif %}">{% if movement.quantity > 0 %}+{% endif %}{{ movement.quantity|floatformat:"-0g" }} <small>{{ product.unit }}</small></strong>
+            {% if movement.counted_quantity != None %}<p class="movement-item__counted">Stock compté : <strong>{{ movement.counted_quantity }} {{ product.unit }}</strong></p>{% endif %}
+            <p>{{ movement.reason|default:"Aucun motif précisé" }}</p>
+            <div class="movement-item__meta"><span>Par {{ movement.user.get_full_name|default:movement.user.username }}</span>{% if movement.unit_cost != None %}<span>{{ movement.unit_cost|floatformat:"-2g" }} FCFA / unité</span>{% endif %}</div>
+        </li>
+        {% endfor %}
+    </ol>
+    {% if page_obj.has_other_pages %}
+    <nav class="stock-pagination" aria-label="Pages des mouvements">
+        {% if page_obj.has_previous %}<a href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Page précédente</a>{% else %}<span></span>{% endif %}
+        <span>Page {{ page_obj.number }} sur {{ paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Page suivante</a>{% else %}<span></span>{% endif %}
+    </nav>
+    {% endif %}
+    {% else %}
+    <p class="empty-state">Aucun mouvement ne correspond à ces filtres.</p>
+    {% endif %}
+</div>
+{% endblock %}

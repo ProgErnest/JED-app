@@ -14,16 +14,25 @@
             {{ form.product }}
             {{ form.product.errors }}
         </div>
+        {% if form.counted_quantity %}
+        <div class="form-group">
+            {{ form.counted_quantity.label_tag }}
+            {{ form.counted_quantity }}
+            {{ form.counted_quantity.errors }}
+            {% if current_product %}
+            <p class="hint">Stock enregistré : {{ current_product.stock_quantity }} {{ current_product.unit }}. Comptez les unités réellement présentes.</p>
+            {% else %}
+            <p class="hint">Saisissez le nombre d’unités réellement présentes, même si le stock est à zéro.</p>
+            {% endif %}
+        </div>
+        {% else %}
         <div class="form-group">
             {{ form.quantity.label_tag }}
             {{ form.quantity }}
             {{ form.quantity.errors }}
-            {% if page_title == "Correction de stock" %}
-            <p class="hint">Saisissez un nombre positif pour ajouter du stock ou un nombre négatif pour retirer.</p>
-            {% else %}
             <p class="hint">Nombre d'unités reçues.</p>
-            {% endif %}
         </div>
+        {% endif %}
     </div>
     {% if form.unit_cost %}
     <div class="form-row">
@@ -41,7 +50,7 @@
             {{ form.reason }}
             {{ form.reason.errors }}
             {% if page_title == "Correction de stock" %}
-            <p class="hint">Le motif est obligatoire pour une correction.</p>
+            <p class="hint">Ex. : inventaire du matin, casse, perte ou erreur de saisie.</p>
             {% endif %}
         </div>
     </div>

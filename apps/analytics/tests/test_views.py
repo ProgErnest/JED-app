@@ -1,10 +1,11 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.activities.models import Activity
 from apps.accounts.models import ActivityMembership, Role
@@ -134,18 +135,15 @@ class DashboardViewTests(TestCase):
         response = self.client.get(reverse("analytics:global-dashboard"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.activity.name)
-        self.assertEqual(response.context["today_totals"]["revenue"], Decimal("1250.00"))
-        self.assertEqual(response.context["today_totals"]["expenses"], Decimal("200.00"))
-        self.assertEqual(response.context["today_totals"]["reported_balance"], Decimal("1050.00"))
-        self.assertEqual(response.context["today_totals"]["stock_purchases"], Decimal("360.00"))
+        self.assertEqual(response.context["totals"]["revenue"], Decimal("1250.00"))
+        self.assertEqual(response.context["totals"]["stock_purchases"], Decimal("360.00"))
+        self.assertEqual(response.context["period"], "day")
         employee_summary = next(
             row for row in response.context["employees"]
             if row["username"] == "view-global"
         )
         self.assertEqual(employee_summary["sale_count"], 1)
         self.assertEqual(employee_summary["revenue"], Decimal("1250.00"))
-        self.assertEqual(employee_summary["expense_count"], 1)
-        self.assertEqual(employee_summary["expenses"], Decimal("200.00"))
         self.assertEqual(employee_summary["stock_purchases"], Decimal("360.00"))
         cancellation = SaleCancellation.objects.get(sale=old_sale)
         self.assertEqual(employee_summary["last_operation"], cancellation.created_at)
@@ -154,11 +152,13 @@ class DashboardViewTests(TestCase):
             if row["activity"] == self.activity
         )
         self.assertEqual(activity_summary["stock_purchases"], Decimal("360.00"))
-        self.assertContains(response, "Dernières opérations")
-        self.assertContains(response, "Activité des employés")
+        self.assertContains(response, "Équipe")
+        self.assertContains(response, "Les plus vendus")
+        self.assertContains(response, "Marge des produits")
         self.assertContains(response, "Achats de stock")
+        self.assertNotContains(response, "Dépenses déclarées")
         self.assertContains(response, "view-global")
-        self.assertContains(response, f"Annulation de la vente #{old_sale.pk}")
+        self.assertNotContains(response, f"Annulation de la vente #{old_sale.pk}")
         self.assertContains(
             response,
             reverse("sales:sale_list", args=[self.activity.slug]),
@@ -180,6 +180,30 @@ class DashboardViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("start_date", response.context)
         self.assertEqual((response.context["end_date"] - response.context["start_date"]).days, 29)
+
+    def test_global_period_presets_use_calendar_boundaries(self):
+        global_user = User.objects.create_user("period-global", password="test")
+        ActivityMembership.objects.create(user=global_user, role=Role.GLOBAL)
+        self.client.force_login(global_user)
+
+        today = timezone.localdate()
+        for period, expected_start in (
+            ("day", today),
+            ("week", today - timedelta(days=today.weekday())),
+            ("month", today.replace(day=1)),
+        ):
+            response = self.client.get(
+                reverse("analytics:global-dashboard"),
+                {"period": period},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.context["period"], period)
+            self.assertEqual(response.context["start_date"], expected_start)
+            self.assertEqual(response.context["end_date"], today)
+            self.assertEqual(
+                response.context["previous_end"],
+                expected_start - timedelta(days=1),
+            )
 
     def test_activity_dashboard_renders_unsold_product_and_negative_margin(self):
         product = Product.objects.create(
