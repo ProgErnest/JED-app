@@ -1,0 +1,38 @@
+{% extends "catalog/base.html" %}
+{% load static %}
+
+{% block title %}Rubriques — {{ activity.name }}{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+    <nav class="catalog-switch" aria-label="Type de catalogue">
+        <a href="{% url 'catalog:product_list' activity_slug=activity.slug %}">Produits</a>
+        <a href="{% url 'catalog:service_list' activity_slug=activity.slug %}">Prestations</a>
+        <a href="{% url 'catalog:category_list' activity_slug=activity.slug %}" aria-current="page">Rubriques</a>
+    </nav>
+    <div class="page-heading">
+        <div><p class="page-kicker">{{ activity.name }} · Catalogue</p><h1>Rubriques</h1></div>
+        {% if can_manage_categories %}<a href="{% url 'catalog:category_add' activity_slug=activity.slug %}" class="btn action-link">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>
+            Nouvelle rubrique
+        </a>{% endif %}
+    </div>
+    {% if categories %}
+    <ul class="category-list" aria-label="Rubriques de l’activité {{ activity.name }}">
+        {% for category in categories %}
+        <li class="category-list__item">
+            <div><h2>{{ category.name }}</h2><p>{{ category.product_count }} produit{{ category.product_count|pluralize }} · {{ category.service_count }} prestation{{ category.service_count|pluralize }}</p></div>
+            <div class="category-list__meta">
+                {% if category.is_active %}<span>Active</span>{% else %}<span class="is-inactive">Désactivée</span>{% endif %}
+                {% if can_manage_categories %}<a class="action-link" href="{% url 'catalog:category_edit' activity_slug=activity.slug category_slug=category.slug %}" aria-label="Modifier {{ category.name }}">
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-edit"></use></svg>Modifier
+                </a>{% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">Aucune rubrique. Créez-en une pour regrouper les produits et prestations.</p>
+    {% endif %}
+</div>
+{% endblock %}

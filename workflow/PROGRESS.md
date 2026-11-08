@@ -6,7 +6,7 @@ Mettre à jour ce fichier après la revue de chaque tâche. Une tâche n'est « 
 
 - **Terminé** : workflow initial et intégration des décisions métier A2–A8 dans le registre et le document de conception ; JED-01 — socle Django et configuration; JED-05 — approvisionnements et coût moyen; JED-06 P0 — corrections traçables de stock; JED-07 — ventes et lignes historiques; JED-08 — annulations de vente et journal d'audit métier; JED-09 — dépenses catégorisées, corrections et annulations auditées.
 - **Reporté** : JED-06 P1 — inventaire physique hebdomadaire, à réaliser après stabilisation des flux P0.
-- **Prochaine tâche** : revue et commit JED-10 — indicateurs et tableaux de bord essentiels.
+- **Tâche en cours** : JED-13 — rubriques de catalogue et filtres de caisse; revue et commit restent à faire.
 - **Décisions en attente** : aucune parmi A2 à A8; voir [DECISIONS.md](DECISIONS.md).
 - **Problèmes connus** : date cible du 3 novembre 2026 très serrée; les deux réserves de déploiement JED-01 (chargement du fichier `.env` et dépendance Gunicorn) restent à traiter.
 
@@ -27,11 +27,13 @@ Mettre à jour ce fichier après la revue de chaque tâche. Une tâche n'est « 
 | 2026-10-28 | JED-08 — annulations et audit métier | Annulation idempotente, motifs obligatoires, restauration du stock par correction atomique et journal consultable; validation ciblée: `python manage.py test apps/sales apps/inventory --verbosity=1` -> 50 tests OK. | `feat: trace les annulations de vente` |
 | 2026-10-28 | JED-09 — dépenses catégorisées | Saisie par activité/catégorie; montants Decimal positifs; catégories gérées en admin; corrections avec motif et audit avant/après; annulations traçables; employés limités à leurs dépenses; 7 tests JED-09 OK, `manage.py check`, `makemigrations --check --dry-run` et `git diff --check` OK. | `4aac805` |
 | 2026-10-29 | JED-10 — indicateurs et tableaux de bord essentiels | Vues par activité et globales; ventes/dépenses annulées exclues; marge brute estimée limitée aux lignes fiables; solde présenté comme indicatif, non comptable; filtres de dates et périmètre rôle côté serveur. 9 tests analytics OK, `manage.py check`, `makemigrations --check --dry-run` et `git diff --check` OK. | `feat: ajoute les tableaux de bord essentiels` |
+| 2026-11-08 | JED-13 — rubriques de catalogue et filtres de caisse | Modèle/migration additive, rubriques propres aux activités pour produits/prestations, gestion réservée aux responsables, filtres des listes et de la caisse, seed de références explicite/idempotent/dry-run sans stock fictif. 7 tests catégories et 3 tests de seed/permissions OK; 80 tests catalogue/ventes exécutés avec 1 échec préexistant `SaleViewsTest.test_detail_view` (formatage de `sale_detail.html`, déjà consigné pour JED-03); `manage.py check`, `makemigrations --check --dry-run` et `git diff --check` OK. Migration `0004` non appliquée à la base locale; seed local non exécuté. | Revue et validation du porteur en attente |
+| 2026-11-08 | JED-13 — peuplement de références PDF | Migration `catalog.0004` appliquée à la base locale; seed ajouté sans écraser les données existantes : Boutique 6 rubriques/17 produits, Coiffure 4/8 produits/13 prestations, Restaurant-bar 7/19 produits. 44 entrées de stock synthétiques (coût d'achat estimé explicitement dans le motif), 3 tickets de référence dont une vente mixte produit/prestation en Coiffure. Dry-run et seconde exécution réelle idempotents; 8 tests catégories OK; filtre « Épicerie et alimentation » vérifié dans la caisse navigateur; `manage.py check` OK. | À valider par le porteur |
 
 ## À remplir à chaque passage
 
-- Tâche active : JED-10 — indicateurs et tableaux de bord essentiels (implémentation validée, revue/commit en attente)
+- Tâche active : JED-13 — rubriques de catalogue et filtres de caisse (implémentation en attente de revue/validation)
 - Agent/outils utilisés : — (assistant IA via Cline/KiloCode), Python 3.14.4, Django 6.1.2
-- Changements et vérification : tableaux de bord par activité et globaux; ventes annulées exclues; marge fiable explicitement estimative; période et accès filtrés côté serveur; 9 tests analytics OK; checks Django, migrations et diff propres
-- Bloqueurs / décision attendue : aucun bloqueur connu
-- Prochaine tâche débloquée : JED-11 — interface responsive et parcours prioritaires, après revue/commit de JED-10
+- Changements et vérification : rubriques `CatalogCategory` par activité, filtres produits/prestations et caisse; migration `catalog.0004` appliquée; références PDF, stocks d'ouverture et ventes chargés sans écraser les données; dry-run et relance idempotents; 8 tests catégories OK.
+- Bloqueurs / décision attendue : coût d'achat de démo synthétique, à remplacer par des coûts réels. L'échec isolé du détail de vente reste le problème de formatage déjà connu dans JED-03.
+- Prochaine tâche débloquée : revue/validation de JED-13 par le porteur

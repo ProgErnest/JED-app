@@ -49,6 +49,12 @@ def dashboard_metrics(user, activity, start_date: date, end_date: date) -> dict:
         sale_count=Count("pk"),
     )
     lines = SaleLine.objects.filter(sale__in=sales)
+    line_totals = lines.aggregate(
+        product_revenue=Sum("total", filter=Q(product__isnull=False)),
+        service_revenue=Sum("total", filter=Q(service__isnull=False)),
+        product_line_count=Count("pk", filter=Q(product__isnull=False)),
+        service_line_count=Count("pk", filter=Q(service__isnull=False)),
+    )
     reliable_lines = lines.filter(margin_reliable=True, product__isnull=False)
     line_margin = ExpressionWrapper(
         (F("unit_price") - F("cost")) * F("quantity"),
@@ -59,14 +65,26 @@ def dashboard_metrics(user, activity, start_date: date, end_date: date) -> dict:
         product__isnull=False,
         margin_reliable=False,
     ).count()
+    product_line_count = lines.filter(product__isnull=False).count()
+    reliable_product_line_count = reliable_lines.count()
     return {
         "revenue": sale_totals["revenue"] or ZERO,
         "sale_count": sale_totals["sale_count"],
+        "product_revenue": line_totals["product_revenue"] or ZERO,
+        "service_revenue": line_totals["service_revenue"] or ZERO,
+        "product_line_count": line_totals["product_line_count"],
+        "service_line_count": line_totals["service_line_count"],
         "expenses": ZERO,
         "expense_count": 0,
         "estimated_margin": margin_total,
         "unreliable_line_count": unreliable_line_count,
-        "reliable_margin_line_count": reliable_lines.count(),
+        "product_line_count": product_line_count,
+        "reliable_margin_line_count": reliable_product_line_count,
+        "margin_coverage_percent": (
+            reliable_product_line_count / product_line_count * 100
+            if product_line_count
+            else None
+        ),
         "employee_scope": employee_scope,
         "reported_balance": sale_totals["revenue"] or ZERO,
     }

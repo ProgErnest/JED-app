@@ -12,8 +12,18 @@
             <p class="page-kicker">Catalogue</p>
             <h1>Produits</h1>
         </div>
-        <a href="{% url 'catalog:product_add' activity_slug=activity.slug %}" class="btn action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Nouveau produit</a>
+        <div class="page-heading__actions">
+            <a href="{% url 'catalog:category_list' activity_slug=activity.slug %}" class="btn btn-secondary action-link">Rubriques</a>
+            <a href="{% url 'catalog:product_add' activity_slug=activity.slug %}" class="btn action-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-add"></use></svg>Nouveau produit</a>
+        </div>
     </div>
+    {% if categories %}
+    <nav class="catalog-category-filter" aria-label="Filtrer les produits par rubrique">
+        <a href="?category=all" {% if category_filter == "all" %}aria-current="true"{% endif %}>Tout</a>
+        {% for category in categories %}<a href="?category={{ category.pk }}" {% if category_filter == category.pk|stringformat:'s' %}aria-current="true"{% endif %}>{{ category.name }}{% if not category.is_active %} · inactive{% endif %}</a>{% endfor %}
+        <a href="?category=none" {% if category_filter == "none" %}aria-current="true"{% endif %}>Sans rubrique</a>
+    </nav>
+    {% endif %}
     {% if products %}
     <ul class="product-grid" aria-label="Produits de l’activité {{ activity.name }}">
         {% for product in products %}
@@ -22,6 +32,7 @@
                 <h2>{{ product.name }}</h2>
                 <span class="product-card__unit">Par {{ product.unit }}</span>
             </div>
+            {% if product.category %}<p class="product-card__category">{{ product.category.name }}</p>{% endif %}
             <div class="product-card__prices">
                 <div class="product-price product-price--purchase">
                     <span class="product-price__label">Achat / unité</span>

@@ -14,6 +14,38 @@ from django.db import models
 from django.utils import timezone
 
 
+class CatalogCategory(models.Model):
+    """Rubrique de classement des produits et prestations d'une activité."""
+
+    activity = models.ForeignKey(
+        "activities.Activity",
+        on_delete=models.CASCADE,
+        related_name="catalog_categories",
+        verbose_name="activité",
+    )
+    name = models.CharField("nom", max_length=100)
+    slug = models.SlugField("slug", max_length=100)
+    sort_order = models.PositiveIntegerField("ordre d'affichage", default=0)
+    is_active = models.BooleanField("active", default=True)
+    created_at = models.DateTimeField("créée le", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "rubrique de catalogue"
+        verbose_name_plural = "rubriques de catalogue"
+        ordering = ["sort_order", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "slug"], name="unique_catalog_category_slug_per_activity"
+            ),
+            models.UniqueConstraint(
+                fields=["activity", "name"], name="unique_catalog_category_name_per_activity"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.activity.name})"
+
+
 class Product(models.Model):
     """Produit physique vendu (ex: boisson, plat, article de boutique)."""
 
@@ -22,6 +54,14 @@ class Product(models.Model):
         on_delete=models.CASCADE,
         related_name="products",
         verbose_name="activité",
+    )
+    category = models.ForeignKey(
+        CatalogCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products",
+        verbose_name="rubrique",
     )
     name = models.CharField("nom", max_length=150)
     slug = models.SlugField("slug", max_length=150)
@@ -42,6 +82,14 @@ class Product(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.activity.name})"
+
+    def clean(self):
+        super().clean()
+        if self.category_id and self.activity_id:
+            if self.category.activity_id != self.activity_id:
+                from django.core.exceptions import ValidationError
+
+                raise ValidationError({"category": "La rubrique doit appartenir à la même activité."})
 
     def save(self, *args, **kwargs):
         previous_price = None
@@ -95,6 +143,14 @@ class Service(models.Model):
         related_name="services",
         verbose_name="activité",
     )
+    category = models.ForeignKey(
+        CatalogCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="services",
+        verbose_name="rubrique",
+    )
     name = models.CharField("nom", max_length=150)
     slug = models.SlugField("slug", max_length=150)
     description = models.TextField("description", blank=True)
@@ -112,6 +168,14 @@ class Service(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.activity.name})"
+
+    def clean(self):
+        super().clean()
+        if self.category_id and self.activity_id:
+            if self.category.activity_id != self.activity_id:
+                from django.core.exceptions import ValidationError
+
+                raise ValidationError({"category": "La rubrique doit appartenir à la même activité."})
 
     def save(self, *args, **kwargs):
         previous_price = None

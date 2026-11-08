@@ -119,6 +119,15 @@ Les fiches ci-dessous découpent les phases du document de conception en changem
 - **Acceptation** : scénarios de recette du document exécutés; sauvegarde restaurée sur copie de test avec données récupérées; application testée depuis un autre appareil.
 - **Commit suggéré** : `chore: prépare la production et les sauvegardes`
 
+### JED-13 — Rubriques de catalogue et filtres de caisse
+
+- **Dépend de** : JED-04 et JED-07. **Priorité** : P1.
+- **Résultat** : classement des produits et prestations par rubriques propres à chaque activité, filtrage des catalogues et de la caisse, avec exemples de référence optionnels.
+- **Fichiers/modèles visés** : `apps/catalog/` (`CatalogCategory`, formulaires, vues, service et commande de seed), `apps/sales/` (contexte de caisse), templates catalogue/vente et `static/css/jed.css`.
+- **Règles** : catégorie facultative pour préserver les données existantes; catégories et articles cloisonnés par activité; produits/prestations déjà rattachés restent visibles quand une catégorie est désactivée; prix des références indicatifs, aucun prix de pack présenté comme prix unitaire; seed explicite, idempotent, dry-run, sans écrasement des données ou création de stock/ventes fictifs.
+- **Acceptation** : création/modification contrôlée selon le rôle et l'activité; filtres rubrique/recherche utilisables sur desktop et mobile; anciennes entrées non classées accessibles; migration additive; tests permissions, catégories inactives, seed répétée et absence d'écrasement de prix.
+- **Commit suggéré** : `feat: classe les produits et prestations par rubrique`
+
 ## Ordre de repli
 
 En cas de retard : terminer les parcours de vente, stock, dépenses, permissions et audit; réduire d'abord les tâches P1 du tableau de bord et l'inventaire complet. Ne pas raccourcir la recette de permissions ni sauter le test de restauration avant la livraison.

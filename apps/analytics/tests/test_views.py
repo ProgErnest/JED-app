@@ -74,7 +74,7 @@ class DashboardViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Vos opérations uniquement")
-        self.assertContains(response, "Marge brute estimée")
+        self.assertContains(response, "Marge estimée des produits")
         self.assertEqual(len(response.context["sales"]), 1)
         self.assertEqual(response.context["sales"][0].user, self.employee)
         self.assertNotContains(response, "view-colleague")
@@ -152,8 +152,8 @@ class DashboardViewTests(TestCase):
             if row["activity"] == self.activity
         )
         self.assertEqual(activity_summary["stock_purchases"], Decimal("360.00"))
-        self.assertContains(response, "Équipe")
-        self.assertContains(response, "Les plus vendus")
+        self.assertContains(response, "Employés les plus actifs")
+        self.assertContains(response, "Meilleures ventes")
         self.assertContains(response, "Marge des produits")
         self.assertContains(response, "Achats de stock")
         self.assertNotContains(response, "Dépenses déclarées")
@@ -187,10 +187,21 @@ class DashboardViewTests(TestCase):
         self.client.force_login(global_user)
 
         today = timezone.localdate()
-        for period, expected_start in (
-            ("day", today),
-            ("week", today - timedelta(days=today.weekday())),
-            ("month", today.replace(day=1)),
+        for period, expected_start, expected_previous_start, expected_previous_end in (
+            ("day", today, today - timedelta(days=1), today - timedelta(days=1)),
+            (
+                "week",
+                today - timedelta(days=today.weekday()),
+                today - timedelta(days=today.weekday() + 7),
+                today - timedelta(days=7),
+            ),
+            (
+                "month",
+                today.replace(day=1),
+                (today.replace(day=1) - timedelta(days=1)).replace(day=1),
+                (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+                + timedelta(days=today.day - 1),
+            ),
         ):
             response = self.client.get(
                 reverse("analytics:global-dashboard"),
@@ -200,10 +211,8 @@ class DashboardViewTests(TestCase):
             self.assertEqual(response.context["period"], period)
             self.assertEqual(response.context["start_date"], expected_start)
             self.assertEqual(response.context["end_date"], today)
-            self.assertEqual(
-                response.context["previous_end"],
-                expected_start - timedelta(days=1),
-            )
+            self.assertEqual(response.context["previous_start"], expected_previous_start)
+            self.assertEqual(response.context["previous_end"], expected_previous_end)
 
     def test_activity_dashboard_renders_unsold_product_and_negative_margin(self):
         product = Product.objects.create(
@@ -252,3 +261,39 @@ class DashboardViewTests(TestCase):
         }
         self.assertEqual(product_rows[unsold.pk]["quantity"], 0)
         self.assertIsNone(product_rows[unsold.pk]["reliable_margin"])
+
+    def test_activity_dashboard_labels_sales_and_margin_indicators_clearly(self):
+        product = Product.objects.create(
+            activity=self.activity,
+            name="Produit tableau indicateurs",
+            slug="produit-tableau-indicateurs",
+            unit="pièce",
+            price=Decimal("20.00"),
+        )
+        sale = Sale.objects.create(
+            activity=self.activity,
+            user=self.manager,
+            total=Decimal("20.00"),
+        )
+        SaleLine.objects.create(
+            sale=sale,
+            product=product,
+            quantity=1,
+            unit_price=Decimal("20.00"),
+            cost=Decimal("8.00"),
+            margin_reliable=True,
+            total=Decimal("20.00"),
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(
+            reverse("analytics:activity-dashboard", args=[self.activity.slug])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Total des ventes")
+        self.assertContains(response, "Ventes de produits")
+        self.assertContains(response, "Ventes de prestations")
+        self.assertContains(response, "Évolution des ventes")
+        self.assertContains(response, "60,00 %")
+        self.assertNotContains(response, "Dépenses par catégorie")

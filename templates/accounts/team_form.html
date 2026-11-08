@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="page-heading"><h1>{% if membership %}Modifier un accès{% else %}Créer un accès{% endif %}</h1></div>
-<form method="post" class="form-panel" novalidate>
+<form method="post" class="form-panel team-form" novalidate>
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>{% endif %}
     <h2 class="section-title">Compte</h2>

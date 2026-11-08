@@ -8,7 +8,8 @@ activités autorisées (voir JED-03).
 from __future__ import annotations
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef
+from django.core.exceptions import PermissionDenied
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -16,10 +17,84 @@ from django.views import View
 from django.views.generic import CreateView, ListView, UpdateView
 
 from apps.activities.models import Activity
-from apps.accounts.permissions import ActivityAccessRequiredMixin
+from apps.accounts.permissions import (
+    ActivityAccessRequiredMixin,
+    user_can_manage_team,
+)
 from apps.inventory.models import StockMovement
-from .forms import ProductForm, ServiceForm
-from .models import Product, Service
+from .forms import CatalogCategoryForm, ProductForm, ServiceForm
+from .models import CatalogCategory, Product, Service
+
+
+class CatalogCategoryListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView):
+    model = CatalogCategory
+    template_name = "catalog/category_list.html"
+    context_object_name = "categories"
+    activity_slug_kwarg = "activity_slug"
+
+    def get_queryset(self):
+        self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        return CatalogCategory.objects.filter(activity=self.activity).annotate(
+            product_count=Count("products", distinct=True),
+            service_count=Count("services", distinct=True),
+        ).order_by("sort_order", "name")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = self.activity
+        context["can_manage_categories"] = user_can_manage_team(
+            self.request.user, self.activity
+        )
+        return context
+
+
+class CatalogManagerRequiredMixin:
+    def dispatch(self, request, *args, **kwargs):
+        activity = get_object_or_404(Activity, slug=kwargs["activity_slug"])
+        if not user_can_manage_team(request.user, activity):
+            raise PermissionDenied("Seul un responsable peut gérer les rubriques.")
+        return super().dispatch(request, *args, **kwargs)
+
+
+class CatalogCategoryCreateView(LoginRequiredMixin, CatalogManagerRequiredMixin, ActivityAccessRequiredMixin, CreateView):
+    model = CatalogCategory
+    form_class = CatalogCategoryForm
+    template_name = "catalog/category_form.html"
+    activity_slug_kwarg = "activity_slug"
+
+    def get_activity(self):
+        return get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = self.get_activity()
+        return context
+
+    def form_valid(self, form):
+        form.instance.activity = self.get_activity()
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse("catalog:category_list", kwargs={"activity_slug": self.kwargs["activity_slug"]})
+
+
+class CatalogCategoryUpdateView(LoginRequiredMixin, CatalogManagerRequiredMixin, ActivityAccessRequiredMixin, UpdateView):
+    model = CatalogCategory
+    form_class = CatalogCategoryForm
+    template_name = "catalog/category_form.html"
+    activity_slug_kwarg = "activity_slug"
+    slug_url_kwarg = "category_slug"
+
+    def get_queryset(self):
+        return CatalogCategory.objects.filter(activity__slug=self.kwargs["activity_slug"])
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activity"] = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        return context
+
+    def get_success_url(self):
+        return reverse("catalog:category_list", kwargs={"activity_slug": self.kwargs["activity_slug"]})
 
 
 class ProductListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView):
@@ -30,23 +105,37 @@ class ProductListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView)
 
     def get_queryset(self):
         self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        self.categories = CatalogCategory.objects.filter(activity=self.activity)
         purchase_entries = StockMovement.objects.filter(
             product_id=OuterRef("pk"),
             movement_type=StockMovement.MovementType.ENTRY,
             unit_cost__isnull=False,
         )
-        return (
+        queryset = (
             Product.objects.filter(activity=self.activity)
             .annotate(
                 has_zero_purchase_cost=Exists(purchase_entries.filter(unit_cost=0)),
                 has_positive_purchase_cost=Exists(purchase_entries.filter(unit_cost__gt=0)),
             )
+            .select_related("category")
             .order_by("name")
         )
+        self.category_filter = self.request.GET.get("category", "all")
+        if self.category_filter == "none":
+            return queryset.filter(category__isnull=True)
+        if self.category_filter.isdigit():
+            return queryset.filter(
+                category_id=self.category_filter,
+                category__activity=self.activity,
+            )
+        self.category_filter = "all"
+        return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["activity"] = self.activity
+        context["categories"] = self.categories
+        context["category_filter"] = self.category_filter
         return context
 
 
@@ -55,6 +144,11 @@ class ProductCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, CreateV
     form_class = ProductForm
     template_name = "catalog/product_form.html"
     activity_slug_kwarg = "activity_slug"
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["activity"] = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        return kwargs
 
     def get_activity(self):
         return get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
@@ -81,6 +175,11 @@ class ProductUpdateView(LoginRequiredMixin, ActivityAccessRequiredMixin, UpdateV
     form_class = ProductForm
     template_name = "catalog/product_form.html"
     activity_slug_kwarg = "activity_slug"
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["activity"] = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        return kwargs
 
     def get_queryset(self):
         return Product.objects.filter(
@@ -113,11 +212,28 @@ class ServiceListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView)
 
     def get_queryset(self):
         self.activity = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
-        return Service.objects.filter(activity=self.activity).order_by("name")
+        self.categories = CatalogCategory.objects.filter(activity=self.activity)
+        queryset = (
+            Service.objects.filter(activity=self.activity)
+            .select_related("category")
+            .order_by("name")
+        )
+        self.category_filter = self.request.GET.get("category", "all")
+        if self.category_filter == "none":
+            return queryset.filter(category__isnull=True)
+        if self.category_filter.isdigit():
+            return queryset.filter(
+                category_id=self.category_filter,
+                category__activity=self.activity,
+            )
+        self.category_filter = "all"
+        return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["activity"] = self.activity
+        context["categories"] = self.categories
+        context["category_filter"] = self.category_filter
         return context
 
 
@@ -126,6 +242,11 @@ class ServiceCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, CreateV
     form_class = ServiceForm
     template_name = "catalog/service_form.html"
     activity_slug_kwarg = "activity_slug"
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["activity"] = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        return kwargs
 
     def get_activity(self):
         return get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
@@ -152,6 +273,11 @@ class ServiceUpdateView(LoginRequiredMixin, ActivityAccessRequiredMixin, UpdateV
     form_class = ServiceForm
     template_name = "catalog/service_form.html"
     activity_slug_kwarg = "activity_slug"
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["activity"] = get_object_or_404(Activity, slug=self.kwargs["activity_slug"])
+        return kwargs
 
     def get_queryset(self):
         return Service.objects.filter(

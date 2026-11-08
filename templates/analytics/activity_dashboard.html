@@ -4,195 +4,145 @@
 {% block title %}Indicateurs · {{ activity.name }}{% endblock %}
 
 {% block content %}
-<div class="page-shell">
-  <div class="page-heading">
+<div class="activity-dashboard">
+  <header class="activity-dashboard__header">
     <div>
-      <p class="page-kicker">Performance</p>
-      <h1>Indicateurs</h1>
-      {% if metrics.employee_scope %}<p class="text-muted mb-0">Vos opérations uniquement</p>{% endif %}
+      <p class="activity-dashboard__eyebrow">Pilotage de l’activité</p>
+      <h1>{{ activity.name }}</h1>
+      {% if metrics.employee_scope %}<p class="activity-dashboard__scope">Vos opérations uniquement</p>{% endif %}
     </div>
     {% if activities|length > 1 %}
-      <nav aria-label="Activités" class="d-flex flex-wrap gap-2">
-        {% for accessible_activity in activities %}
-          <a class="btn btn-sm {% if accessible_activity.pk == activity.pk %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{% url 'analytics:activity-dashboard' accessible_activity.slug %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ accessible_activity.name }}</a>
-        {% endfor %}
-      </nav>
+      <label class="activity-dashboard__switcher">
+        <span>Changer d’activité</span>
+        <select id="activity-switcher" aria-label="Changer d’activité">
+          {% for accessible_activity in activities %}
+            <option value="{% url 'analytics:activity-dashboard' accessible_activity.slug %}?start={{ start_date|date:'Y-m-d' }}&amp;end={{ end_date|date:'Y-m-d' }}" {% if accessible_activity.pk == activity.pk %}selected{% endif %}>{{ accessible_activity.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
     {% endif %}
-  </div>
+  </header>
 
-  <form method="get" class="period-filter inline-form">
-    <div class="form-group">
-      <label class="form-label" for="start">Du</label>
-      <input class="form-control" type="date" id="start" name="start" value="{{ start_date|date:'Y-m-d' }}" required>
+  <form method="get" class="activity-period" aria-label="Période des indicateurs">
+    <div class="activity-period__dates">
+      <label for="start">Du<input type="date" id="start" name="start" value="{{ start_date|date:'Y-m-d' }}" required></label>
+      <label for="end">Au<input type="date" id="end" name="end" value="{{ end_date|date:'Y-m-d' }}" required></label>
     </div>
-    <div class="form-group">
-      <label class="form-label" for="end">Au</label>
-      <input class="form-control" type="date" id="end" name="end" value="{{ end_date|date:'Y-m-d' }}" required>
-    </div>
-    <div><button class="btn btn-primary action-link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-filter"></use></svg>Voir la période</button></div>
+    <button class="activity-period__submit" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-filter"></use></svg> Appliquer</button>
+    <span class="activity-period__range">{{ start_date|date:'d/m/Y' }} – {{ end_date|date:'d/m/Y' }}</span>
   </form>
 
-  <dl class="metric-grid">
-    <div class="metric-card" data-tone="green"><dt>Ventes encaissées</dt><dd>{{ metrics.revenue|floatformat:2 }} FCFA</dd><small>{{ metrics.sale_count }} tickets non annulés</small><span class="metric-status">Revenus</span></div>
-    <div class="metric-card" data-tone="navy"><dt>Marge brute estimée</dt><dd>{{ metrics.estimated_margin|floatformat:2 }} FCFA</dd><small>{{ metrics.reliable_margin_line_count }} lignes fiables</small><span class="metric-status">Estimation</span></div>
-    {# Dépenses et solde après dépenses masqués #}
-  </dl>
+  <section class="activity-overview" aria-label="Résumé de l’activité">
+    <div class="activity-overview__main">
+      <div>
+        <p class="activity-overview__label">Total des ventes</p>
+        <strong class="activity-overview__revenue">{{ metrics.revenue|floatformat:0 }} <small>FCFA</small></strong>
+        <p class="activity-overview__caption">{{ metrics.sale_count }} ticket{% if metrics.sale_count != 1 %}s{% endif %} non annulé{% if metrics.sale_count != 1 %}s{% endif %}</p>
+      </div>
+      <div class="activity-overview__comparison {% if metrics.revenue_change > 0 %}is-positive{% elif metrics.revenue_change < 0 %}is-negative{% endif %}">
+        <span class="activity-overview__comparison-label">Évolution des ventes</span>
+        {% if metrics.revenue_change_percent != None %}
+          <strong>{% if metrics.revenue_change > 0 %}+{% elif metrics.revenue_change < 0 %}−{% endif %}{{ metrics.revenue_change_abs|floatformat:0 }} FCFA</strong>
+          <small>{% if metrics.revenue_change_percent > 0 %}+{% endif %}{{ metrics.revenue_change_percent|floatformat:1 }} % vs période précédente</small>
+        {% else %}
+          <strong>Pas de référence</strong>
+          <small>Aucune vente sur la période précédente</small>
+        {% endif %}
+      </div>
+    </div>
+    <div class="activity-overview__breakdown">
+      <div><span>Ventes de produits</span><strong>{{ metrics.product_revenue|floatformat:0 }} <small>FCFA</small></strong><small>{{ metrics.product_line_count }} ligne{% if metrics.product_line_count != 1 %}s{% endif %}</small></div>
+      <div><span>Ventes de prestations</span><strong>{{ metrics.service_revenue|floatformat:0 }} <small>FCFA</small></strong><small>{{ metrics.service_line_count }} vendue{% if metrics.service_line_count != 1 %}s{% endif %}</small></div>
+      <div class="activity-overview__margin">
+        <span>Marge estimée des produits</span>
+        {% if metrics.margin_coverage_percent != None %}<strong>{{ metrics.estimated_margin|floatformat:0 }} <small>FCFA</small></strong><small>{{ metrics.margin_coverage_percent|floatformat:0 }} % des lignes fiables</small>
+        {% else %}<strong>Non disponible</strong><small>Aucune vente de produit</small>{% endif %}
+      </div>
+    </div>
+  </section>
 
   {% if metrics.unreliable_line_count %}
-    <div class="alert alert-warning mt-3" role="status">La marge estimée exclut {{ metrics.unreliable_line_count }} ligne(s) dont le coût n'est pas fiable.</div>
+    <p class="activity-notice" role="status">{{ metrics.unreliable_line_count }} ligne{% if metrics.unreliable_line_count != 1 %}s{% endif %} exclue{% if metrics.unreliable_line_count != 1 %}s{% endif %} de la marge : coût non fiable.</p>
   {% endif %}
-  <p class="small text-muted mt-3">La marge est une estimation basée sur les coûts enregistrés.</p>
 
-  <section class="dashboard-section" aria-labelledby="activity-sales-heading">
-    <div class="section-heading"><h2 id="activity-sales-heading">Ventes détaillées</h2></div>
-    <div class="table-responsive mobile-list" role="region" aria-label="Ventes de la période" tabindex="0">
-      <table>
-        <thead><tr><th>Ticket</th><th>Date</th><th>Employé</th><th>Articles</th><th>Montant</th><th>Statut</th></tr></thead>
-        <tbody>
-          {% for sale in sales %}
-          <tr>
-            <th scope="row"><a href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">#{{ sale.pk }}</a></th>
-            <td data-label="Date">{{ sale.created_at|date:"d/m/Y H:i" }}</td>
-            <td data-label="Employé">{{ sale.user.get_full_name|default:sale.user.username }}</td>
-            <td data-label="Articles">{% for line in sale.lines.all %}{{ line.item_display }} × {{ line.quantity }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
-            <td data-label="Montant">{{ sale.total|floatformat:2 }} FCFA</td>
-            <td data-label="Statut">{% if sale.is_canceled %}Annulée{% else %}Active{% endif %}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="6" class="text-muted">Aucune vente sur cette période.</td></tr>
+  <div class="activity-dashboard__columns">
+    <section class="activity-panel" aria-labelledby="activity-items-heading">
+      <div class="activity-panel__heading"><div><p class="activity-panel__eyebrow">Ce qui se vend</p><h2 id="activity-items-heading">Meilleurs articles</h2></div></div>
+      {% if sales_by_item %}
+        <ol class="activity-item-list">
+          {% for item in sales_by_item|slice:":5" %}
+            <li class="activity-item">
+              <span class="activity-item__rank">{{ forloop.counter|stringformat:"02d" }}</span>
+              <div class="activity-item__details"><strong>{{ item.product__name|default:item.service__name }}</strong><small>{{ item.quantity }} vendu{% if item.quantity != 1 %}s{% endif %}</small></div>
+              <strong class="activity-item__revenue">{{ item.revenue|floatformat:0 }} <small>FCFA</small></strong>
+            </li>
           {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
+        </ol>
+      {% else %}
+        <p class="activity-empty">Aucun article vendu sur cette période.</p>
+      {% endif %}
+    </section>
 
-  <section class="dashboard-section" aria-labelledby="sales-items-heading">
-    <div class="section-heading"><h2 id="sales-items-heading">Articles vendus</h2></div>
-    <div class="table-responsive mobile-list" role="region" aria-label="Résumé des articles vendus" tabindex="0">
-      <table>
-        <thead><tr><th>Produit ou prestation</th><th>Quantité</th><th>Recettes</th></tr></thead>
-        <tbody>
-          {% for item in sales_by_item %}
-          <tr>
-            <th scope="row">{{ item.product__name|default:item.service__name }}</th>
-            <td data-label="Quantité">{{ item.quantity }}</td>
-            <td data-label="Recettes">{{ item.revenue|floatformat:2 }} FCFA</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="3" class="text-muted">Aucun article vendu sur cette période.</td></tr>
+    <section class="activity-panel" aria-labelledby="activity-recent-heading">
+      <div class="activity-panel__heading"><div><p class="activity-panel__eyebrow">Dernières opérations</p><h2 id="activity-recent-heading">Ventes récentes</h2></div></div>
+      {% if sales %}
+        <ol class="activity-sale-list">
+          {% for sale in sales|slice:":6" %}
+            <li>
+              <a class="activity-sale" href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">
+                <span class="activity-sale__identity"><strong>Ticket #{{ sale.pk }}</strong><small>{{ sale.created_at|date:'d/m · H:i' }} · {{ sale.user.get_full_name|default:sale.user.username }}</small></span>
+                <span class="activity-sale__amount">{{ sale.total|floatformat:0 }} <small>FCFA</small><span class="activity-sale__status {% if sale.is_canceled %}is-canceled{% endif %}">{% if sale.is_canceled %}Annulée{% else %}Enregistrée{% endif %}</span></span>
+              </a>
+            </li>
           {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
+        </ol>
+      {% else %}
+        <p class="activity-empty">Aucune vente sur cette période.</p>
+      {% endif %}
+      <a class="activity-panel__link" href="{% url 'sales:sale_list' activity_slug=activity.slug %}">Ouvrir les ventes <span aria-hidden="true">→</span></a>
+    </section>
+  </div>
 
-  <section class="dashboard-section" aria-labelledby="product-profitability-heading">
-    <div class="section-heading"><h2 id="product-profitability-heading">Rentabilité et rotation des produits</h2></div>
-    <p class="small text-muted">Le chiffre d’affaires inclut toutes les ventes actives de la période. Coût, marge et taux sont calculés uniquement sur les lignes dont le coût snapshot est fiable; les lignes inconnues ou non fiables sont indiquées séparément.</p>
-    <div class="table-responsive mobile-list" role="region" aria-label="Rentabilité et rotation des produits" tabindex="0">
-      <table>
-        <thead><tr><th>Produit</th><th>Stock actuel</th><th>Quantité vendue</th><th>Chiffre d’affaires</th><th>COGS fiable</th><th>Marge fiable</th><th>Taux fiable</th><th>Dernière vente</th><th>Coût à qualifier</th></tr></thead>
-        <tbody>
-          {% for row in product_profitability %}
-          <tr>
-            <th scope="row">{{ row.product.name }}</th>
-            <td data-label="Stock actuel">{{ row.product.stock_quantity }}</td>
-            <td data-label="Quantité vendue">{{ row.quantity }}</td>
-            <td data-label="Chiffre d’affaires">{{ row.revenue|floatformat:2 }} FCFA</td>
-            <td data-label="COGS fiable">{% if row.reliable_cogs != None %}{{ row.reliable_cogs|floatformat:2 }} FCFA{% else %}Non calculable{% endif %}</td>
-            <td data-label="Marge fiable">{% if row.reliable_margin != None %}{{ row.reliable_margin|floatformat:2 }} FCFA{% else %}Non calculable{% endif %}</td>
-            <td data-label="Taux fiable">{% if row.reliable_margin_rate != None %}{{ row.reliable_margin_rate|floatformat:2 }} %{% else %}—{% endif %}</td>
-            <td data-label="Dernière vente">{% if row.last_sale_at %}{{ row.last_sale_at|date:"d/m/Y" }}{% else %}Jamais{% endif %}</td>
-            <td data-label="Coût à qualifier">{{ row.unknown_cost_line_count }} inconnu · {{ row.unreliable_cost_line_count }} non fiable</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="9" class="text-muted">Aucun produit au catalogue pour cette activité.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="dashboard-section" aria-labelledby="expenses-heading">
-    <div class="section-heading"><h2 id="expenses-heading">Dépenses par catégorie</h2></div>
-    <div class="table-responsive mobile-list" role="region" aria-label="Totaux de dépenses par catégorie" tabindex="0">
-      <table>
-        <thead><tr><th>Catégorie</th><th>Nombre</th><th>Total déclaré</th></tr></thead>
-        <tbody>
-          {% for category in expenses_by_category %}
-          <tr><th scope="row">{{ category.category__name }}</th><td data-label="Nombre">{{ category.expense_count }}</td><td data-label="Total déclaré">{{ category.amount|floatformat:2 }} FCFA</td></tr>
-          {% empty %}
-          <tr><td colspan="3" class="text-muted">Aucune dépense active sur cette période.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="table-responsive mobile-list" role="region" aria-label="Dépenses de la période" tabindex="0">
-      <table>
-        <thead><tr><th>Date</th><th>Catégorie</th><th>Description</th><th>Employé</th><th>Montant</th><th>Statut</th></tr></thead>
-        <tbody>
-          {% for expense in expenses %}
-          <tr>
-            <td data-label="Date">{{ expense.created_at|date:"d/m/Y H:i" }}</td>
-            <td data-label="Catégorie">{{ expense.category.name }}</td>
-            <td data-label="Description">{{ expense.description|default:"—" }}</td>
-            <td data-label="Employé">{{ expense.user.get_full_name|default:expense.user.username }}</td>
-            <td data-label="Montant">{{ expense.amount|floatformat:2 }} FCFA</td>
-            <td data-label="Statut">{% if expense.is_canceled %}Annulée{% else %}Active{% endif %}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="6" class="text-muted">Aucune dépense sur cette période.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="dashboard-section" aria-labelledby="expense-audit-heading">
-    <div class="section-heading"><h2 id="expense-audit-heading">Corrections et annulations de dépenses</h2></div>
-    <ol class="operation-list">
-      {% for event in expense_audits %}
-      <li class="operation-row operation-expense">
-        <div class="operation-main">
-          <strong>{{ event.get_action_display }} · {{ event.expense.category.name }}</strong>
-          <span>{{ event.reason|default:event.expense.description|default:"Aucun motif fourni" }}</span>
-        </div>
-        <div class="operation-meta">
-          <span>{{ event.user.get_full_name|default:event.user.username }}</span>
-          <time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:"d/m/Y H:i" }}</time>
-        </div>
-      </li>
+  <details class="activity-report">
+    <summary><span><strong>Rentabilité et rotation des produits</strong><small>Stock actuel, marge fiable et produits à surveiller</small></span><span class="activity-report__toggle" aria-hidden="true">+</span></summary>
+    <p class="activity-report__intro">Le chiffre d’affaires inclut les ventes actives. Coût, marge et taux ne sont calculés que lorsque le coût est fiable.</p>
+    <div class="activity-profit-list">
+      {% for row in product_profitability %}
+        <article class="activity-profit">
+          <header><strong>{{ row.product.name }}</strong><span>Stock : {{ row.product.stock_quantity }}</span></header>
+          <div class="activity-profit__stats">
+            <div><span>Vendu</span><strong>{{ row.quantity }}</strong></div>
+            <div><span>Recettes</span><strong>{{ row.revenue|floatformat:0 }} FCFA</strong></div>
+            <div><span>Marge fiable</span><strong>{% if row.reliable_margin != None %}{{ row.reliable_margin|floatformat:2 }} FCFA{% else %}Non calculable{% endif %}</strong></div>
+            <div><span>Taux fiable</span><strong>{% if row.reliable_margin_rate != None %}{{ row.reliable_margin_rate|floatformat:2 }} %{% else %}—{% endif %}</strong></div>
+          </div>
+          <footer><span>{% if row.last_sale_at %}Dernière vente : {{ row.last_sale_at|date:'d/m/Y' }}{% else %}Jamais vendu{% endif %}</span><span>Coût à qualifier : {{ row.unknown_cost_line_count }} inconnu · {{ row.unreliable_cost_line_count }} non fiable</span></footer>
+        </article>
       {% empty %}
-      <li class="empty-state">Aucune correction ou annulation sur cette période.</li>
+        <p class="activity-empty">Aucun produit au catalogue pour cette activité.</p>
+      {% endfor %}
+    </div>
+  </details>
+
+  <details class="activity-report">
+    <summary><span><strong>Mouvements de stock</strong><small>{{ stock_purchase_total|floatformat:0 }} FCFA d’achats · {{ stock_purchase_count }} approvisionnement{% if stock_purchase_count != 1 %}s{% endif %} sur la période</small></span><span class="activity-report__toggle" aria-hidden="true">+</span></summary>
+    <ol class="activity-movement-list">
+      {% for movement in movements %}
+        <li class="activity-movement">
+          <div class="activity-movement__main"><strong>{{ movement.product.name }}</strong><span>{{ movement.get_movement_type_display }} · {{ movement.created_at|date:'d/m/Y H:i' }}</span></div>
+          <strong class="activity-movement__quantity">{{ movement.quantity }}</strong>
+          <div class="activity-movement__meta"><span>{{ movement.user.get_full_name|default:movement.user.username }}</span><span>{% if movement.unit_cost != None %}{{ movement.unit_cost|floatformat:0 }} FCFA / unité{% else %}Coût non renseigné{% endif %}</span></div>
+          {% if movement.reason %}<p>{{ movement.reason }}</p>{% endif %}
+        </li>
+      {% empty %}
+        <li class="activity-empty">Aucun mouvement de stock sur cette période.</li>
       {% endfor %}
     </ol>
-  </section>
-
-  <section class="dashboard-section" aria-labelledby="stock-heading">
-    <div class="section-heading">
-      <h2 id="stock-heading">Mouvements de stock</h2>
-      <p class="period-caption">Achats de stock : {{ stock_purchase_total|floatformat:2 }} FCFA · {{ stock_purchase_count }} approvisionnements</p>
-    </div>
-    <div class="table-responsive mobile-list" role="region" aria-label="Mouvements de stock de la période" tabindex="0">
-      <table>
-        <thead><tr><th>Date</th><th>Produit</th><th>Type</th><th>Quantité</th><th>Coût unitaire</th><th>Employé</th><th>Motif</th></tr></thead>
-        <tbody>
-          {% for movement in movements %}
-          <tr>
-            <td data-label="Date">{{ movement.created_at|date:"d/m/Y H:i" }}</td>
-            <td data-label="Produit">{{ movement.product.name }}</td>
-            <td data-label="Type">{{ movement.get_movement_type_display }}</td>
-            <td data-label="Quantité">{{ movement.quantity }}</td>
-            <td data-label="Coût unitaire">{% if movement.unit_cost != None %}{{ movement.unit_cost|floatformat:2 }} FCFA{% else %}—{% endif %}</td>
-            <td data-label="Employé">{{ movement.user.get_full_name|default:movement.user.username }}</td>
-            <td data-label="Motif">{{ movement.reason|default:"—" }}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="7" class="text-muted">Aucun mouvement de stock sur cette période.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
+  </details>
 </div>
+<script>
+  document.querySelector("#activity-switcher")?.addEventListener("change", (event) => {
+    window.location.href = event.currentTarget.value;
+  });
+</script>
 {% endblock %}

@@ -22,7 +22,7 @@ from apps.accounts.permissions import (
     ActivityAccessRequiredMixin,
     user_is_employee_in_activity,
 )
-from apps.catalog.models import Product, Service
+from apps.catalog.models import CatalogCategory, Product, Service
 
 from .forms import SaleCancellationForm, SaleLineFormSet
 from .models import Sale, SaleCancellation, SaleLine
@@ -74,7 +74,9 @@ class SaleListView(LoginRequiredMixin, ActivityAccessRequiredMixin, ListView):
                 queryset = queryset.filter(created_at__date__gte=parsed_from)
             if parsed_to:
                 queryset = queryset.filter(created_at__date__lte=parsed_to)
-        return queryset.select_related("user").order_by("-created_at")
+        return queryset.select_related("user").prefetch_related(
+            "lines__product", "lines__service"
+        ).order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -261,10 +263,13 @@ class SaleCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, View):
 
         products = Product.objects.filter(
             activity=self.activity, is_active=True, stock_quantity__gt=0
-        ).order_by("name")
+        ).select_related("category").order_by("name")
         services = Service.objects.filter(
             activity=self.activity, is_active=True
-        ).order_by("name")
+        ).select_related("category").order_by("name")
+        categories = CatalogCategory.objects.filter(activity=self.activity).order_by(
+            "sort_order", "name"
+        )
         return TemplateResponse(
             request,
             self.template_name,
@@ -281,6 +286,7 @@ class SaleCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, View):
                         "price": str(product.price),
                         "unit": product.unit,
                         "stock": product.stock_quantity,
+                        "category_id": product.category_id,
                     }
                     for product in products
                 ]
@@ -292,9 +298,11 @@ class SaleCreateView(LoginRequiredMixin, ActivityAccessRequiredMixin, View):
                         "price": str(service.price),
                         "unit": "prestation",
                         "stock": None,
+                        "category_id": service.category_id,
                     }
                     for service in services
                 ],
+                "catalog_categories": categories,
                 "stock_by_product": {
                     str(product.pk): product.stock_quantity for product in products
                 },

@@ -28,6 +28,12 @@
             {{ form.duration_minutes.errors }}
             <p class="hint">En minutes (par défaut 30).</p>
         </div>
+        <div class="form-group">
+            {{ form.category.label_tag }}
+            {{ form.category }}
+            {{ form.category.errors }}
+            <p class="hint">Facultatif. Les rubriques sont propres à cette activité.</p>
+        </div>
     </div>
     <div class="form-group">
         {{ form.description.label_tag }}

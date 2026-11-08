@@ -38,17 +38,27 @@
                 </label>
             </div>
 
+            <div class="sales-rubrics-section">
+                <h2 class="sales-rubrics-heading">Choisir une rubrique</h2>
+                <nav class="sales-rubrics" id="sales-rubrics" aria-label="Filtrer les articles par rubrique">
+                    <button class="sales-rubric is-selected" type="button" data-rubric-id="all" aria-pressed="true">Tout <span>{{ products|length }}</span></button>
+                    {% for category in catalog_categories %}
+                    <button class="sales-rubric" type="button" data-rubric-id="{{ category.pk }}" aria-pressed="false">{{ category.name }}{% if not category.is_active %} · inactive{% endif %} <span></span></button>
+                    {% endfor %}
+                    <button class="sales-rubric" type="button" data-rubric-id="none" aria-pressed="false">Sans rubrique <span></span></button>
+                </nav>
+            </div>
             <p class="sales-picker__hint" id="sale-picker-hint">Touchez un produit pour l’ajouter au ticket.</p>
             <div class="sales-items" id="sale-items" role="tabpanel" aria-live="polite">
                 {% for product in products %}
-                <button class="sale-item" type="button" data-item-key="product:{{ product.pk }}" data-item-type="product" data-item-name="{{ product.name }}" data-item-price="{{ product.price|unlocalize }}" data-item-stock="{{ product.stock_quantity }}" data-item-unit="{{ product.unit }}">
+                <button class="sale-item" type="button" aria-label="Ajouter un article au ticket : {{ product.name }}" data-item-key="product:{{ product.pk }}" data-item-type="product" data-item-category="{% if product.category_id %}{{ product.category_id }}{% else %}none{% endif %}" data-item-name="{{ product.name }}" data-item-price="{{ product.price|unlocalize }}" data-item-stock="{{ product.stock_quantity }}" data-item-unit="{{ product.unit }}">
                     <span class="sale-item__main"><strong>{{ product.name }}</strong><small>Stock : {{ product.stock_quantity }} {{ product.unit }}</small></span>
                     <span class="sale-item__price">{{ product.price|floatformat:"-2g" }} <small>FCFA</small></span>
                     <span class="sale-item__add" aria-hidden="true">+</span>
                 </button>
                 {% endfor %}
                 {% for service in services %}
-                <button class="sale-item" type="button" data-item-key="service:{{ service.pk }}" data-item-type="service" data-item-name="{{ service.name }}" data-item-price="{{ service.price|unlocalize }}" data-item-stock="" data-item-unit="prestation" hidden>
+                <button class="sale-item" type="button" aria-label="Ajouter une prestation au ticket : {{ service.name }}" data-item-key="service:{{ service.pk }}" data-item-type="service" data-item-category="{% if service.category_id %}{{ service.category_id }}{% else %}none{% endif %}" data-item-name="{{ service.name }}" data-item-price="{{ service.price|unlocalize }}" data-item-stock="" data-item-unit="prestation" hidden>
                     <span class="sale-item__main"><strong>{{ service.name }}</strong><small>Prestation</small></span>
                     <span class="sale-item__price">{{ service.price|floatformat:"-2g" }} <small>FCFA</small></span>
                     <span class="sale-item__add" aria-hidden="true">+</span>
@@ -93,6 +103,7 @@
     const form = document.querySelector("#sale-form");
     const itemButtons = [...document.querySelectorAll(".sale-item")];
     const categoryButtons = [...document.querySelectorAll("[data-sale-category]")];
+    const rubricButtons = [...document.querySelectorAll("[data-rubric-id]")];
     const searchInput = document.querySelector("#sale-search");
     const cart = document.querySelector("#sale-cart");
     const cartEmpty = document.querySelector("#sale-cart-empty");
@@ -107,21 +118,33 @@
     const money = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
     const state = new Map();
     let activeCategory = "product";
+    let activeRubric = "all";
 
     document.querySelectorAll(".sale-form-row").forEach((row) => {
         const select = row.querySelector("select[name$='-item']");
         if (select?.value) state.set(select.value, Math.max(1, Number(row.querySelector("input[name$='-quantity']")?.value || 1)));
     });
 
-    const visibleItems = () => itemButtons.filter((button) =>
-        button.dataset.itemType === activeCategory
-        && button.dataset.itemName.toLocaleLowerCase().includes(searchInput.value.trim().toLocaleLowerCase())
-    );
+    const renderRubrics = () => {
+        const typeItems = itemButtons.filter((button) => button.dataset.itemType === activeCategory);
+        for (const button of rubricButtons) {
+            const rubricId = button.dataset.rubricId;
+            const count = rubricId === "all"
+                ? typeItems.length
+                : typeItems.filter((item) => item.dataset.itemCategory === rubricId).length;
+            button.hidden = rubricId !== "all" && count === 0;
+            button.querySelector("span").textContent = String(count);
+            const selected = button.dataset.rubricId === activeRubric;
+            button.classList.toggle("is-selected", selected);
+            button.setAttribute("aria-pressed", String(selected));
+        }
+    };
 
     const renderCatalog = () => {
         let visibleCount = 0;
         for (const button of itemButtons) {
             const matches = button.dataset.itemType === activeCategory
+                && (activeRubric === "all" || button.dataset.itemCategory === activeRubric)
                 && button.dataset.itemName.toLocaleLowerCase().includes(searchInput.value.trim().toLocaleLowerCase());
             button.hidden = !matches;
             const quantity = state.get(button.dataset.itemKey) || 0;
@@ -226,12 +249,20 @@
 
     categoryButtons.forEach((button) => button.addEventListener("click", () => {
         activeCategory = button.dataset.saleCategory;
+        activeRubric = "all";
         categoryButtons.forEach((tab) => {
             const selected = tab === button;
             tab.classList.toggle("is-selected", selected);
             tab.setAttribute("aria-selected", String(selected));
         });
         searchInput.value = "";
+        renderRubrics();
+        renderCatalog();
+    }));
+
+    rubricButtons.forEach((button) => button.addEventListener("click", () => {
+        activeRubric = button.dataset.rubricId;
+        renderRubrics();
         renderCatalog();
     }));
 
@@ -264,6 +295,7 @@
         submitButton.lastChild.textContent = " Enregistrement…";
     });
 
+    renderRubrics();
     renderCart();
 })();
 </script>

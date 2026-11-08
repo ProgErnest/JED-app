@@ -517,6 +517,29 @@ class SaleViewsTest(TestCase):
         self.assertContains(response, "sale-stock-data")
         self.assertContains(response, "Ajouter un article")
 
+    def test_sale_list_mobile_card_shows_sale_lines_and_author(self):
+        sale = Sale.objects.create(
+            activity=self.activity, user=self.global_user, total=Decimal("5.00")
+        )
+        SaleLine.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=2,
+            unit_price=Decimal("2.50"),
+            total=Decimal("5.00"),
+        )
+        self.client.force_login(self.global_user)
+
+        response = self.client.get(
+            reverse("sales:sale_list", kwargs={"activity_slug": self.activity.slug})
+        )
+
+        self.assertContains(response, "sale-history-card__lines")
+        self.assertContains(response, "(Restaurant Test)")
+        self.assertContains(response, "sale-history-card__quantity")
+        self.assertContains(response, "2,50 FCFA")
+        self.assertContains(response, "global1")
+
     def test_global_user_can_create_sale(self):
         self.client.force_login(self.global_user)
         add_url = reverse("sales:sale_add", kwargs={"activity_slug": self.activity.slug})

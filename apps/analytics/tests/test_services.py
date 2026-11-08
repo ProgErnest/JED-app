@@ -150,6 +150,40 @@ class DashboardMetricsTests(TestCase):
         self.assertEqual(metrics["expense_count"], 0)
         self.assertTrue(metrics["employee_scope"])
 
+    def test_activity_metrics_separate_product_and_service_revenue(self):
+        service = Service.objects.create(
+            activity=self.activity,
+            name="Prestation test",
+            slug="prestation-test-analytics",
+            price=Decimal("15.00"),
+        )
+        sale = self.create_sale(
+            self.employee,
+            Decimal("35.00"),
+            lines=[(Decimal("20.00"), Decimal("8.00"), 1, True)],
+        )
+        SaleLine.objects.create(
+            sale=sale,
+            service=service,
+            quantity=1,
+            unit_price=Decimal("15.00"),
+            cost=Decimal("0.00"),
+            margin_reliable=True,
+            total=Decimal("15.00"),
+        )
+
+        metrics = dashboard_metrics(
+            self.manager,
+            self.activity,
+            self.today,
+            self.today,
+        )
+
+        self.assertEqual(metrics["revenue"], Decimal("35.00"))
+        self.assertEqual(metrics["product_revenue"], Decimal("20.00"))
+        self.assertEqual(metrics["service_revenue"], Decimal("15.00"))
+        self.assertEqual(metrics["estimated_margin"], Decimal("12.00"))
+
     def test_global_metrics_are_split_by_activity(self):
         global_user = User.objects.create_user("analytics-global", password="test")
         ActivityMembership.objects.create(user=global_user, role=Role.GLOBAL)

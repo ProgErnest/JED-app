@@ -43,9 +43,15 @@
     </div>
     <ul class="sales-history-mobile" aria-label="Historique des ventes">
         {% for sale in sales %}
-        <li><a class="sale-history-card" href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">
+        <li><a class="sale-history-card{% if sale.is_canceled %} sale-history-card--canceled{% endif %}" href="{% url 'sales:sale_detail' activity_slug=activity.slug pk=sale.pk %}">
             <div class="sale-history-card__top"><strong>Ticket #{{ sale.pk }}</strong>{% if sale.is_canceled %}<span class="sale-status sale-status--canceled">Annulée</span>{% else %}<span class="sale-status sale-status--active">Enregistrée</span>{% endif %}</div>
-            <div class="sale-history-card__bottom"><span>{{ sale.created_at|date:"d/m/Y · H:i" }}<small>{{ sale.user.get_full_name|default:sale.user.username }}</small></span><strong>{{ sale.total|floatformat:"-2g" }} FCFA</strong></div>
+            <div class="sale-history-card__meta"><span>{{ sale.created_at|date:"d/m/Y · H:i" }}</span><span>{{ sale.user.get_full_name|default:sale.user.username }}</span></div>
+            <ul class="sale-history-card__lines" aria-label="Articles vendus">
+                {% for line in sale.lines.all %}
+                <li><span class="sale-history-card__item">{{ line.item_display }}</span><span class="sale-history-card__quantity">× {{ line.quantity }}</span><span class="sale-history-card__price">{{ line.unit_price|floatformat:"-2g" }} FCFA</span><strong>{{ line.total|floatformat:"-2g" }} FCFA</strong></li>
+                {% endfor %}
+            </ul>
+            <div class="sale-history-card__total"><span>Total</span><strong>{{ sale.total|floatformat:"-2g" }} FCFA</strong></div>
         </a></li>
         {% endfor %}
     </ul>

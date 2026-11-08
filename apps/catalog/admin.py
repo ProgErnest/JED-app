@@ -2,13 +2,25 @@
 
 from django.contrib import admin
 
-from .models import PriceHistory, Product, Service
+from .models import CatalogCategory, PriceHistory, Product, Service
+
+
+@admin.register(CatalogCategory)
+class CatalogCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "activity", "sort_order", "is_active")
+    list_filter = ("activity", "is_active")
+    search_fields = ("name", "slug")
+    ordering = ("activity__name", "sort_order", "name")
+    raw_id_fields = ("activity",)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("name", "activity", "unit", "price", "is_active", "updated_at")
-    list_filter = ("activity", "is_active", "unit")
+    list_display = ("name", "activity", "category", "unit", "price", "is_active", "updated_at")
+    list_filter = ("activity", "category", "is_active", "unit")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("activity__name", "name")
@@ -18,8 +30,8 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ("name", "activity", "price", "duration_minutes", "is_active", "updated_at")
-    list_filter = ("activity", "is_active")
+    list_display = ("name", "activity", "category", "price", "duration_minutes", "is_active", "updated_at")
+    list_filter = ("activity", "category", "is_active")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("activity__name", "name")

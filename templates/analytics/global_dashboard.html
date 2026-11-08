@@ -6,7 +6,7 @@
 {% block content %}
 <div class="page-shell global-dashboard">
   <header class="global-dashboard__header">
-    <div><h1>Pilotage</h1><p>{{ start_date|date:"j F Y" }}{% if start_date != end_date %} au {{ end_date|date:"j F Y" }}{% endif %}</p></div>
+    <div><h1>Vue d’ensemble</h1><p>{{ start_date|date:"j F Y" }}{% if start_date != end_date %} au {{ end_date|date:"j F Y" }}{% endif %}</p></div>
     <nav class="period-switch" aria-label="Période des indicateurs">
       <a href="?period=day" {% if period == "day" %}aria-current="page"{% endif %}>Jour</a>
       <a href="?period=week" {% if period == "week" %}aria-current="page"{% endif %}>Semaine</a>
@@ -15,19 +15,22 @@
   </header>
 
   <section class="global-summary" aria-label="Résumé de la période">
-    <div class="global-summary__lead"><span>Ventes enregistrées</span><strong>{{ totals.revenue|floatformat:0 }} <small>FCFA</small></strong><p>{{ totals.sale_count }} tickets actifs</p></div>
-    <div class="global-summary__stat"><span>Évolution vs période précédente</span><strong class="{% if totals.revenue_change > 0 %}is-positive{% elif totals.revenue_change < 0 %}is-negative{% endif %}">{% if totals.revenue_change > 0 %}+{% endif %}{{ totals.revenue_change|floatformat:0 }} FCFA</strong>{% if totals.revenue_change_percent != None %}<small>{% if totals.revenue_change_percent > 0 %}+{% endif %}{{ totals.revenue_change_percent|floatformat:1 }} %</small>{% else %}<small>Pas de période comparable</small>{% endif %}</div>
-    <div class="global-summary__stat"><span>Marge brute produits fiable</span><strong>{{ totals.estimated_margin|floatformat:0 }} FCFA</strong><small>Coûts connus uniquement</small></div>
-    <div class="global-summary__stat"><span>Achats de stock</span><strong>{{ totals.stock_purchases|floatformat:0 }} FCFA</strong><small>{{ totals.stock_entry_count }} approvisionnements · séparés de la marge</small></div>
+    <div class="global-summary__lead"><span>Total des ventes</span><strong>{{ totals.revenue|floatformat:0 }} <small>FCFA</small></strong><p>{{ totals.sale_count }} ticket(s) non annulé(s)</p></div>
+    <div class="global-summary__stat"><span>Comparaison</span>{% if totals.revenue_change_percent != None %}<strong class="{% if totals.revenue_change > 0 %}is-positive{% elif totals.revenue_change < 0 %}is-negative{% endif %}">{% if totals.revenue_change > 0 %}En hausse de{% elif totals.revenue_change < 0 %}En baisse de{% else %}Stable à{% endif %} {{ totals.revenue_change_abs|floatformat:0 }} FCFA</strong><small>{% if totals.revenue_change_percent > 0 %}+{% endif %}{{ totals.revenue_change_percent|floatformat:1 }} % par rapport à la période précédente</small>{% else %}<strong>Pas de comparaison disponible</strong>{% endif %}</div>
+    <div class="global-summary__stat"><span>Marge estimée des produits</span>{% if totals.margin_coverage_percent != None %}<strong>{{ totals.estimated_margin|floatformat:0 }} FCFA</strong><small>{{ totals.reliable_margin_line_count }} ligne(s) fiable(s) sur {{ totals.product_line_count }} · {{ totals.margin_coverage_percent|floatformat:0 }} %</small>{% else %}<strong>Non disponible</strong><small>Aucune ligne produit à coût fiable</small>{% endif %}</div>
+    <div class="global-summary__stat"><span>Achats de stock</span><strong>{{ totals.stock_purchases|floatformat:0 }} FCFA</strong><small>{{ totals.stock_entry_count }} approvisionnement(s), non déduits des ventes</small></div>
   </section>
 
   <section class="dashboard-section global-section" aria-labelledby="activity-comparison-title">
-    <div class="section-heading"><h2 id="activity-comparison-title">Activités</h2><span>Ventes et marge fiable sur la période</span></div>
+    <div class="section-heading"><h2 id="activity-comparison-title">Résultat par activité</h2><span>Choisissez une activité pour voir ses détails</span></div>
     <div class="activity-rows">
       {% for row in rows %}
       <a class="activity-row" href="{% url 'analytics:activity-dashboard' row.activity.slug %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">
-        <span class="activity-row__name">{{ row.activity.name }}</span><span class="activity-row__revenue">{{ row.revenue|floatformat:0 }} <small>FCFA</small></span><span class="activity-row__tickets">{{ row.sale_count }} tickets</span><span class="activity-row__margin">Marge fiable <strong>{{ row.estimated_margin|floatformat:0 }} FCFA</strong></span>
-        <span class="activity-row__change {% if row.revenue_change > 0 %}is-positive{% elif row.revenue_change < 0 %}is-negative{% endif %}">{% if row.revenue_change > 0 %}+{% endif %}{{ row.revenue_change|floatformat:0 }} FCFA<small>vs période précédente</small></span><span class="activity-row__link">Détails <span aria-hidden="true">›</span></span>
+        <span class="activity-row__name">{{ row.activity.name }}</span>
+        <span class="activity-row__revenue"><small>Ventes</small>{{ row.revenue|floatformat:0 }} FCFA</span>
+        <span class="activity-row__tickets"><small>Tickets</small>{{ row.sale_count }}</span>
+        <span class="activity-row__margin"><small>Marge estimée</small>{% if row.margin_coverage_percent != None %}<strong>{{ row.estimated_margin|floatformat:0 }} FCFA</strong><small>{{ row.margin_coverage_percent|floatformat:0 }} % des lignes produit fiables</small>{% else %}<strong>Non disponible</strong><small>Aucune ligne produit sur la période</small>{% endif %}</span>
+        <span class="activity-row__change {% if row.revenue_change > 0 %}is-positive{% elif row.revenue_change < 0 %}is-negative{% endif %}"><small>Évolution des ventes</small>{% if row.revenue_change_percent != None %}{% if row.revenue_change > 0 %}En hausse de{% elif row.revenue_change < 0 %}En baisse de{% else %}Stable à{% endif %} {{ row.revenue_change_abs|floatformat:0 }} FCFA{% else %}Pas de comparaison{% endif %}</span><span class="activity-row__link">Voir l’activité <span aria-hidden="true">›</span></span>
       </a>
       {% empty %}<p class="empty-state">Aucune activité active.</p>{% endfor %}
     </div>
@@ -35,20 +38,20 @@
 
   <div class="global-rankings">
     <section class="dashboard-section global-section" aria-labelledby="best-sellers-title">
-      <div class="section-heading"><h2 id="best-sellers-title">Les plus vendus</h2><span>Produits et prestations · par recettes</span></div>
+      <div class="section-heading"><h2 id="best-sellers-title">Meilleures ventes</h2><span>Produits et prestations, par recettes</span></div>
       <ol class="ranking-list">{% for item in item_rankings.best_sellers %}<li><span class="ranking-list__rank">{{ forloop.counter }}</span><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {% if item.kind == "product" %}Produit{% else %}Prestation{% endif %} · {{ item.quantity }} vendu(s)</small></span><strong class="ranking-list__value">{{ item.revenue|floatformat:0 }} <small>FCFA</small></strong></li>{% empty %}<li class="ranking-list__empty">Aucune vente sur cette période.</li>{% endfor %}</ol>
     </section>
     <section class="dashboard-section global-section" aria-labelledby="margin-ranking-title">
       <div class="section-heading"><h2 id="margin-ranking-title">Marge des produits</h2><span>Coûts fiables uniquement</span></div>
-      <h3>Meilleures marges</h3>
+      <h3>Marges les plus élevées</h3>
       <ol class="ranking-list ranking-list--compact">{% for item in item_rankings.profitable_products %}<li><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {{ item.reliable_line_count }} ligne(s) fiable(s)</small></span><strong class="ranking-list__value">{{ item.reliable_margin|floatformat:0 }} FCFA</strong></li>{% empty %}<li class="ranking-list__empty">Pas assez de coûts fiables pour classer les produits.</li>{% endfor %}</ol>
-      <h3 class="ranking-subtitle">Marges les plus faibles</h3>
+      <h3 class="ranking-subtitle">À surveiller</h3>
       <ol class="ranking-list ranking-list--compact">{% for item in item_rankings.low_margin_products %}<li><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {{ item.reliable_line_count }} ligne(s) fiable(s)</small></span><strong class="ranking-list__value {% if item.reliable_margin < 0 %}is-negative{% endif %}">{{ item.reliable_margin|floatformat:0 }} FCFA</strong></li>{% empty %}<li class="ranking-list__empty">Pas assez de coûts fiables pour classer les produits.</li>{% endfor %}</ol>
     </section>
   </div>
 
   <section class="dashboard-section global-section" aria-labelledby="employee-summary-title">
-    <div class="section-heading"><h2 id="employee-summary-title">Équipe</h2><span>Ventes par employé et activité</span></div>
+    <div class="section-heading"><h2 id="employee-summary-title">Employés les plus actifs</h2><span>Classement par recettes de ventes</span></div>
     <div class="employee-rows">{% for employee in employees %}<div class="employee-row"><strong>{{ employee.full_name }}</strong><span>{{ employee.activity }}</span><span>{{ employee.sale_count }} tickets</span><strong>{{ employee.revenue|floatformat:0 }} FCFA</strong></div>{% empty %}<p class="empty-state">Aucune vente enregistrée sur cette période.</p>{% endfor %}</div>
   </section>
   <p class="dashboard-note">Les marges concernent uniquement les produits vendus avec un coût fiable. Les prestations sont classées par recettes, sans estimation de marge. Les achats de stock sont affichés séparément.</p>
