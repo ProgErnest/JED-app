@@ -22,7 +22,7 @@ from django.urls import reverse
 
 from apps.activities.models import Activity
 from apps.accounts.models import ActivityMembership, Role
-from apps.catalog.models import Product, Service
+from apps.catalog.models import CatalogCategory, Product, Service
 from apps.inventory.models import StockMovement
 from apps.inventory.services import record_stock_movement
 
@@ -114,6 +114,21 @@ class CreateSaleServiceTest(TestCase):
         self.assertEqual(sale.lines.first().cost, Decimal("1.00"))
         self.assertTrue(sale.lines.first().margin_reliable)
         self.assertEqual(StockMovement.objects.filter(movement_type="EXIT").count(), 1)
+
+    def test_create_sale_snapshots_product_category(self):
+        category = CatalogCategory.objects.create(
+            activity=self.activity,
+            name="Boissons",
+            slug="boissons-sale-test",
+        )
+        self.product.category = category
+        self.product.save(update_fields=["category"])
+
+        sale = create_sale(self.activity, self.user, [{"item": self.product, "quantity": 1}])
+
+        line = sale.lines.get()
+        self.assertEqual(line.category_id_snapshot, category.pk)
+        self.assertEqual(line.category_name_snapshot, "Boissons")
 
     def test_create_sale_service_has_no_stock_movement(self):
         sale = create_sale(self.activity, self.user, [{"item": self.service, "quantity": 1}])

@@ -325,7 +325,7 @@ button, .btn { min-height: 44px; }
 .activity-row:hover, .activity-row:focus-visible { border-color: #9ab9a8; background: #f0f8f3; box-shadow: 0 5px 14px rgba(18,76,57,.09); transform: translateY(-1px); }
 .activity-row__name { font-size: 1.02rem; font-weight: 800; }
 .activity-row__revenue { color: var(--green-dark); font-size: 1.12rem; font-weight: 800; }
-.activity-row__revenue small, .ranking-list__value small { color: var(--muted); font-size: .72rem; }
+.activity-row__revenue small, .activity-row__tickets small, .ranking-list__value small { display: block; margin-bottom: .2rem; color: var(--muted); font-size: .72rem; }
 .activity-row__tickets, .activity-row__margin { color: var(--muted); font-size: .85rem; }
 .activity-row__margin strong { display: block; color: var(--ink); font-size: .98rem; }
 .activity-row__change { font-size: .88rem; font-weight: 750; }
@@ -847,6 +847,43 @@ form.product-form { max-width: 680px; }
 .activity-overview__breakdown { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .activity-overview__breakdown > div { display: grid; align-content: center; gap: .18rem; min-width: 0; min-height: 100px; padding: .95rem 1.15rem; border-left: 1px solid var(--activity-line); background: #f7faf8; }
 .activity-overview__breakdown > div:first-child { border-left: 0; }
+.activity-category-report .activity-report__intro { display: none; }
+.activity-category-report__body { padding: 0 .9rem .9rem; }
+.activity-category-report__note { margin: 0 0 .65rem; color: var(--activity-muted); font-size: .73rem; }
+.activity-category-table { overflow: hidden; border: 1px solid var(--activity-line); border-radius: 6px; background: #fff; }
+.activity-category-table__head, .activity-category-row__main { display: grid; grid-template-columns: minmax(165px, 1.5fr) minmax(100px, .9fr) 64px minmax(112px, 1fr) 76px minmax(170px, 1.4fr); align-items: center; gap: .7rem; }
+.activity-category-table__head { min-height: 36px; padding: .4rem .7rem; background: #f2f6f4; color: #64736f; font-size: .65rem; font-weight: 750; }
+.activity-category-row { border-top: 1px solid #e7eeea; }
+.activity-category-row:first-of-type { border-top: 0; }
+.activity-category-row__main { min-height: 70px; padding: .55rem .7rem; list-style: none; cursor: pointer; }
+.activity-category-row__main::-webkit-details-marker { display: none; }
+.activity-category-row__main:hover { background: #f8fbf9; }
+.activity-category-row__main:focus-visible { outline: 2px solid #176e62; outline-offset: -2px; }
+.activity-category-row__identity { display: grid; gap: .12rem; min-width: 0; }
+.activity-category-row__identity > strong { overflow-wrap: anywhere; color: #213731; font-size: .86rem; }
+.activity-category-row__identity > span:not(.activity-category-row__share) { color: var(--activity-muted); font-size: .66rem; }
+.activity-category-row__identity > small { color: #6a7975; font-size: .62rem; }
+.activity-category-row__share { display: block; width: min(100%, 150px); height: 4px; overflow: hidden; border-radius: 4px; background: #e8efeb; }
+.activity-category-row__share i { display: block; width: var(--category-share); height: 100%; border-radius: inherit; background: #248472; }
+.activity-category-row__revenue { color: #185f53; font-size: .9rem; white-space: nowrap; }
+.activity-category-row__revenue small { color: var(--activity-muted); font-size: .63rem; }
+.activity-category-row__main > strong:not(.activity-category-row__revenue) { color: #253832; font-size: .85rem; }
+.activity-category-row__margin { display: grid; gap: .12rem; min-width: 0; }
+.activity-category-row__margin > strong { color: #253832; font-size: .78rem; }
+.activity-category-row__margin small, .activity-category-row__margin > span { color: var(--activity-muted); font-size: .65rem; }
+.activity-category-row__stock { color: #354d46; font-size: .82rem; }
+.activity-category-row__top { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .1rem .5rem; min-width: 0; }
+.activity-category-row__top > span:first-child { overflow: hidden; color: #354d46; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.activity-category-row__top > small { overflow: hidden; color: var(--activity-muted); font-size: .63rem; text-overflow: ellipsis; white-space: nowrap; }
+.activity-category-row__chevron { grid-column: 2; grid-row: 1 / span 2; color: #687975; transition: transform .18s ease; }
+.activity-category-row[open] .activity-category-row__chevron { transform: rotate(180deg); }
+.activity-category-row__products { display: grid; gap: 0; margin: 0; padding: .15rem .7rem .65rem 2rem; list-style: none; background: #f8fbf9; }
+.activity-category-row__products li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; gap: .55rem; min-height: 34px; border-top: 1px solid #e7eeea; font-size: .72rem; }
+.activity-category-row__product-rank { color: #16806e; font-weight: 800; }
+.activity-category-row__products li > strong:nth-child(2) { overflow: hidden; color: #344a44; text-overflow: ellipsis; white-space: nowrap; }
+.activity-category-row__products li > span:nth-child(3) { color: var(--activity-muted); }
+.activity-category-row__products li > strong:last-child { color: #253832; white-space: nowrap; }
+.activity-category-row__empty { margin: 0; padding: .5rem 1rem .8rem 2rem; background: #f8fbf9; color: var(--activity-muted); font-size: .73rem; }
 .activity-overview__breakdown > div > span { color: var(--activity-muted); font-size: .76rem; font-weight: 700; }
 .activity-overview__breakdown > div > strong { font-size: 1.32rem; line-height: 1.2; }
 .activity-overview__breakdown strong small { color: var(--activity-muted); font-size: .72rem; }
@@ -1172,6 +1209,28 @@ form.product-form { max-width: 680px; }
     .activity-report > summary { min-height: 58px; padding: .65rem .75rem; }
     .activity-report > summary strong { font-size: .82rem; }
     .activity-report > summary small { max-width: 38ch; font-size: .7rem; }
+    .activity-category-report__body { padding: 0 .65rem .7rem; }
+    .activity-category-table { overflow: visible; border: 0; border-radius: 0; background: transparent; }
+    .activity-category-table__head { display: none; }
+    .activity-category-row { margin-top: .5rem; overflow: hidden; border: 1px solid var(--activity-line); border-radius: 6px; background: #fff; }
+    .activity-category-row:first-of-type { border-top: 1px solid var(--activity-line); }
+    .activity-category-row__main { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .8rem; padding: .8rem; }
+    .activity-category-row__identity { grid-column: 1 / -1; padding-bottom: .45rem; border-bottom: 1px solid #e8eeeb; }
+    .activity-category-row__identity > strong { font-size: .94rem; }
+    .activity-category-row__share { width: 100%; }
+    .activity-category-row__main > [data-label] { display: grid; align-content: start; gap: .15rem; min-width: 0; }
+    .activity-category-row__main > [data-label]::before { content: attr(data-label); color: var(--activity-muted); font-size: .64rem; font-weight: 650; }
+    .activity-category-row__main > strong[data-label] { font-size: .86rem; }
+    .activity-category-row__revenue { white-space: normal; }
+    .activity-category-row__revenue small { font-size: .66rem; }
+    .activity-category-row__top { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; padding-top: .45rem; border-top: 1px solid #e8eeeb; }
+    .activity-category-row__top::before { grid-column: 1 / -1; }
+    .activity-category-row__top > span:first-child { white-space: normal; }
+    .activity-category-row__products { padding: .1rem .75rem .6rem; }
+    .activity-category-row__products li { grid-template-columns: 20px minmax(0, 1fr) auto; gap: .4rem; font-size: .68rem; }
+    .activity-category-row__products li > span:nth-child(3) { grid-column: 2; grid-row: 2; font-size: .62rem; }
+    .activity-category-row__products li > strong:last-child { grid-column: 3; grid-row: 1 / span 2; font-size: .67rem; }
+    .activity-category-row__empty { padding: .45rem .8rem .7rem; }
     .activity-profit__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .activity-profit footer { display: grid; }
 }

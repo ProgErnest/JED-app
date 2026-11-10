@@ -82,6 +82,12 @@ class SaleLine(models.Model):
         related_name="sale_lines",
         verbose_name="prestation",
     )
+    category_id_snapshot = models.PositiveBigIntegerField(
+        "identifiant de rubrique (snapshot)", null=True, blank=True
+    )
+    category_name_snapshot = models.CharField(
+        "rubrique (snapshot)", max_length=100, blank=True
+    )
     quantity = models.PositiveIntegerField("quantité", default=1)
     # Snapshots au moment de la vente (immuables) — décision A10.
     unit_price = models.DecimalField(

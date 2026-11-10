@@ -24,7 +24,7 @@ from apps.accounts.permissions import (
     user_is_global,
 )
 from apps.activities.models import Activity
-from apps.catalog.models import Product
+from apps.catalog.models import CatalogCategory, Product
 from apps.sales.models import Sale, SaleCancellation, SaleLine
 from apps.inventory.models import StockMovement
 
@@ -436,6 +436,146 @@ def activity_operational_details(user, activity, start_date: date, end_date: dat
     if employee_scope:
         sales_by_item = sales_by_item.filter(sale__user=user)
 
+    product_lines = SaleLine.objects.filter(
+        sale__activity=activity,
+        sale__created_at__date__gte=start_date,
+        sale__created_at__date__lte=end_date,
+        sale__cancellation__isnull=True,
+        product__isnull=False,
+    ).select_related("product", "product__category")
+    if employee_scope:
+        product_lines = product_lines.filter(sale__user=user)
+
+    category_totals = {}
+    product_totals = {}
+    for line in product_lines:
+        category_key = line.category_id_snapshot
+        category = category_totals.setdefault(
+            category_key,
+            {
+                "id": category_key,
+                "name": line.category_name_snapshot or "Non classés",
+                "quantity": 0,
+                "revenue": ZERO,
+                "product_ids": set(),
+                "reliable_line_count": 0,
+                "reliable_revenue": ZERO,
+                "reliable_margin": ZERO,
+                "unknown_cost_line_count": 0,
+                "unreliable_cost_line_count": 0,
+            },
+        )
+        product_key = line.product_id
+        product = product_totals.setdefault(
+            (category_key, product_key),
+            {
+                "id": product_key,
+                "name": line.product.name if line.product_id else "Produit supprimé",
+                "category_id": category_key,
+                "category_name": category["name"],
+                "quantity": 0,
+                "revenue": ZERO,
+                "reliable_line_count": 0,
+                "reliable_revenue": ZERO,
+                "reliable_margin": ZERO,
+            },
+        )
+        category["quantity"] += line.quantity
+        category["revenue"] += line.total
+        category["product_ids"].add(product_key)
+        product["quantity"] += line.quantity
+        product["revenue"] += line.total
+        if line.margin_reliable and line.cost is not None:
+            margin = (line.unit_price - line.cost) * line.quantity
+            category["reliable_line_count"] += 1
+            category["reliable_revenue"] += line.total
+            category["reliable_margin"] += margin
+            product["reliable_line_count"] += 1
+            product["reliable_revenue"] += line.total
+            product["reliable_margin"] += margin
+        elif line.cost is None:
+            category["unknown_cost_line_count"] += 1
+        else:
+            category["unreliable_cost_line_count"] += 1
+
+    for catalog_category in CatalogCategory.objects.filter(
+        activity=activity,
+        is_active=True,
+    ):
+        category_totals.setdefault(
+            catalog_category.pk,
+            {
+                "id": catalog_category.pk,
+                "name": catalog_category.name,
+                "quantity": 0,
+                "revenue": ZERO,
+                "product_ids": set(),
+                "reliable_line_count": 0,
+                "reliable_revenue": ZERO,
+                "reliable_margin": ZERO,
+                "unknown_cost_line_count": 0,
+                "unreliable_cost_line_count": 0,
+            },
+        )
+
+    current_stock_by_category = {}
+    for product in Product.objects.filter(activity=activity).select_related("category"):
+        category_key = product.category_id
+        stock = current_stock_by_category.setdefault(
+            category_key,
+            {"stock_quantity": 0, "catalog_product_count": 0},
+        )
+        stock["stock_quantity"] += product.stock_quantity
+        stock["catalog_product_count"] += 1
+
+    product_rankings = []
+    products_by_category = {}
+    for product in product_totals.values():
+        product["reliable_margin_rate"] = (
+            product["reliable_margin"] / product["reliable_revenue"] * 100
+            if product["reliable_revenue"]
+            else None
+        )
+        product_rankings.append(product)
+        products_by_category.setdefault(product["category_id"], []).append(product)
+    total_product_revenue = sum(
+        (category["revenue"] for category in category_totals.values()),
+        start=ZERO,
+    )
+    category_rankings = []
+    for category in category_totals.values():
+        category["product_count"] = len(category.pop("product_ids"))
+        category["revenue_share_percent"] = (
+            category["revenue"] / total_product_revenue * 100
+            if total_product_revenue
+            else 0
+        )
+        category["reliable_margin_rate"] = (
+            category["reliable_margin"] / category["reliable_revenue"] * 100
+            if category["reliable_revenue"]
+            else None
+        )
+        category.update(
+            current_stock_by_category.get(
+                category["id"],
+                {"stock_quantity": 0, "catalog_product_count": 0},
+            )
+        )
+        category["products"] = sorted(
+            products_by_category.get(category["id"], []),
+            key=lambda product: (product["revenue"], product["quantity"]),
+            reverse=True,
+        )[:3]
+        category_rankings.append(category)
+    product_rankings.sort(
+        key=lambda product: (product["revenue"], product["quantity"]),
+        reverse=True,
+    )
+    category_rankings.sort(
+        key=lambda category: (category["revenue"], category["quantity"]),
+        reverse=True,
+    )
+
     product_sales = Q(
         sale_lines__sale__created_at__date__gte=start_date,
         sale_lines__sale__created_at__date__lte=end_date,
@@ -515,6 +655,8 @@ def activity_operational_details(user, activity, start_date: date, end_date: dat
         "expenses": [],
         "movements": movements,
         "sales_by_item": sales_by_item,
+        "category_rankings": category_rankings,
+        "category_product_rankings": product_rankings,
         "product_profitability": product_profitability,
         "expenses_by_category": [],
         "stock_purchase_total": stock_purchase_totals["amount"] or ZERO,

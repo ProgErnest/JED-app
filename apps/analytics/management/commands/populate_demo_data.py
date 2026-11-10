@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from apps.accounts.models import ActivityMembership, Role
 from apps.activities.models import Activity
-from apps.catalog.models import Product, Service
+from apps.catalog.models import CatalogCategory, Product, Service
 from apps.expenses.models import Expense, ExpenseCategory
 from apps.inventory.models import StockMovement
 from apps.inventory.services import record_stock_movement
@@ -54,6 +54,38 @@ PRODUCTS = {
         ("Huile capillaire", "huile-capillaire", "flacon", "1800", "3000"),
         ("Bonnet de nuit en satin", "bonnet-satin", "pièce", "1500", "2500"),
     ],
+}
+
+PRODUCT_CATEGORIES = {
+    "boutique": {
+        "huile-palme-1l": "Épicerie",
+        "riz-parfume-5kg": "Épicerie",
+        "sucre-1kg": "Épicerie",
+        "lait-poudre-400g": "Épicerie",
+        "tomate-400g": "Épicerie",
+        "spaghetti-500g": "Épicerie",
+        "savon-menage": "Hygiène et entretien",
+        "eau-minerale-15l": "Boissons",
+        "biscuit-familial": "Collations",
+    },
+    "restaurant-bar": {
+        "biere-blonde-33cl": "Boissons alcoolisées",
+        "biere-blonde-65cl": "Boissons alcoolisées",
+        "eau-minerale-15l": "Boissons sans alcool",
+        "boisson-gazeuse-50cl": "Boissons sans alcool",
+        "jus-fruits-1l": "Boissons sans alcool",
+        "boisson-energisante": "Boissons sans alcool",
+        "eau-sachet": "Boissons sans alcool",
+        "arachides-grillees": "Grignotage",
+    },
+    "coiffure": {
+        "meches-classiques": "Mèches et extensions",
+        "meches-bresiliennes": "Mèches et extensions",
+        "shampooing-500ml": "Soins capillaires",
+        "gel-coiffant": "Soins capillaires",
+        "huile-capillaire": "Soins capillaires",
+        "bonnet-satin": "Accessoires",
+    },
 }
 
 SERVICES = {
@@ -169,9 +201,25 @@ class Command(BaseCommand):
         return users
 
     def _get_catalog(self, activities):
-        products, services = {}, {}
+        products, services, product_categories = {}, {}, {}
         for slug, entries in PRODUCTS.items():
             activity = activities[slug]
+            product_categories[slug] = {}
+            category_names = dict.fromkeys(PRODUCT_CATEGORIES[slug].values())
+            for category_name in category_names:
+                category_slug = f"{SEED_PREFIX}{slug}-{category_name.lower().replace(' ', '-').replace('é', 'e').replace('è', 'e').replace('à', 'a')}"
+                category = CatalogCategory.objects.filter(
+                    activity=activity,
+                    name=category_name,
+                ).first()
+                if category is None:
+                    category = CatalogCategory.objects.create(
+                        activity=activity,
+                        slug=category_slug,
+                        name=category_name,
+                        is_active=True,
+                    )
+                product_categories[slug][category_name] = category
             products[slug] = []
             for name, token, unit, cost, price in entries:
                 product, _ = Product.objects.update_or_create(
@@ -181,6 +229,7 @@ class Command(BaseCommand):
                         "name": name,
                         "unit": unit,
                         "description": f"Article courant vendu en FCFA, sélectionné pour le jeu de démonstration {activity.name}.",
+                        "category": product_categories[slug][PRODUCT_CATEGORIES[slug][token]],
                         "price": Decimal(price),
                         "is_active": True,
                         "stock_quantity": 0,

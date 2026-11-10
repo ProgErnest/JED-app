@@ -12,7 +12,7 @@ from apps.accounts.models import ActivityMembership, Role
 from apps.analytics.services import dashboard_metrics
 from apps.expenses.models import ExpenseCategory
 from apps.expenses.models import Expense
-from apps.catalog.models import Product
+from apps.catalog.models import CatalogCategory, Product
 from apps.inventory.models import StockMovement
 from apps.sales.models import Sale, SaleCancellation, SaleLine
 
@@ -261,6 +261,74 @@ class DashboardViewTests(TestCase):
         }
         self.assertEqual(product_rows[unsold.pk]["quantity"], 0)
         self.assertIsNone(product_rows[unsold.pk]["reliable_margin"])
+
+    def test_category_dashboard_metrics_use_sale_snapshot_and_reliable_margin(self):
+        category = CatalogCategory.objects.create(
+            activity=self.activity,
+            name="Boissons",
+            slug="boissons-analytics",
+        )
+        empty_category = CatalogCategory.objects.create(
+            activity=self.activity,
+            name="Épicerie sèche",
+            slug="epicerie-seche-analytics",
+        )
+        product = Product.objects.create(
+            activity=self.activity,
+            category=category,
+            name="Jus local",
+            slug="jus-local-analytics",
+            unit="bouteille",
+            price=Decimal("500.00"),
+            stock_quantity=7,
+        )
+        sale = Sale.objects.create(
+            activity=self.activity,
+            user=self.manager,
+            total=Decimal("1000.00"),
+        )
+        SaleLine.objects.create(
+            sale=sale,
+            product=product,
+            category_id_snapshot=category.pk,
+            category_name_snapshot=category.name,
+            quantity=2,
+            unit_price=Decimal("500.00"),
+            cost=Decimal("300.00"),
+            margin_reliable=True,
+            total=Decimal("1000.00"),
+        )
+        product.category = None
+        product.save(update_fields=["category"])
+        Product.objects.create(
+            activity=self.activity,
+            category=category,
+            name="Eau minérale",
+            slug="eau-minerale-analytics",
+            unit="bouteille",
+            price=Decimal("250.00"),
+            stock_quantity=7,
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(
+            reverse("analytics:activity-dashboard", args=[self.activity.slug])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        category_rows = {
+            row["id"]: row for row in response.context["category_rankings"]
+        }
+        category_row = category_rows[category.pk]
+        self.assertEqual(category_row["name"], "Boissons")
+        self.assertEqual(category_row["quantity"], 2)
+        self.assertEqual(category_row["revenue"], Decimal("1000.00"))
+        self.assertEqual(category_row["reliable_margin"], Decimal("400.00"))
+        self.assertEqual(category_row["stock_quantity"], 7)
+        self.assertEqual(category_row["products"][0]["name"], "Jus local")
+        self.assertEqual(category_rows[empty_category.pk]["revenue"], Decimal("0.00"))
+        self.assertContains(response, "Boissons")
+        self.assertContains(response, "Jus local")
 
     def test_activity_dashboard_labels_sales_and_margin_indicators_clearly(self):
         product = Product.objects.create(

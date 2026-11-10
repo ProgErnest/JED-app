@@ -132,6 +132,51 @@
     </section>
   </div>
 
+  <details class="activity-report activity-category-report">
+    <summary><span><strong>Résultats par rubrique</strong><small>Comparer les recettes, les marges et les stocks de chaque catégorie</small></span><span class="activity-report__toggle" aria-hidden="true">+</span></summary>
+    <div class="activity-category-report__body">
+      <p class="activity-category-report__note">Les ventes suivent la rubrique du ticket ; le stock est celui d’aujourd’hui. La marge ne porte que sur les coûts fiables.</p>
+      <div class="activity-category-table" role="table" aria-label="Indicateurs des rubriques">
+        <div class="activity-category-table__head" role="row">
+          <span role="columnheader">Rubrique et part des ventes</span>
+          <span role="columnheader">Recettes</span>
+          <span role="columnheader">Unités</span>
+          <span role="columnheader">Marge fiable</span>
+          <span role="columnheader">Stock actuel</span>
+          <span role="columnheader">Classement produits</span>
+        </div>
+      {% for category in category_rankings %}
+        <details class="activity-category-row" role="rowgroup">
+          <summary class="activity-category-row__main" role="row">
+            <span class="activity-category-row__identity" role="cell">
+              <strong>{{ category.name }}</strong>
+              <span>{{ category.product_count }} produit{% if category.product_count != 1 %}s{% endif %} vendu{% if category.product_count != 1 %}s{% endif %}</span>
+              <span class="activity-category-row__share" aria-label="{{ category.revenue_share_percent|floatformat:1 }} pour cent des ventes produits"><i style="--category-share: {{ category.revenue_share_percent }}%"></i></span>
+              <small>{{ category.revenue_share_percent|floatformat:1 }} % des ventes produits</small>
+            </span>
+            <strong class="activity-category-row__revenue" role="cell" data-label="Recettes">{{ category.revenue|floatformat:0 }} <small>FCFA</small></strong>
+            <strong role="cell" data-label="Unités vendues">{{ category.quantity }}</strong>
+            <span class="activity-category-row__margin" role="cell" data-label="Marge fiable">{% if category.reliable_line_count %}<strong>{{ category.reliable_margin|floatformat:0 }} FCFA</strong><small>{% if category.reliable_margin_rate != None %}{{ category.reliable_margin_rate|floatformat:1 }} %{% else %}Taux —{% endif %}</small>{% else %}<span>Non calculable</span>{% endif %}</span>
+            <strong class="activity-category-row__stock" role="cell" data-label="Stock actuel">{{ category.stock_quantity }}</strong>
+            <span class="activity-category-row__top" role="cell" data-label="Classement produits">{% if category.products %}<span>Voir les {{ category.products|length }} premiers</span>{% else %}<small>Aucune vente sur la période</small>{% endif %}<span class="activity-category-row__chevron" aria-hidden="true">⌄</span></span>
+          </summary>
+          {% if category.products %}
+            <ol class="activity-category-row__products" aria-label="Meilleurs produits de {{ category.name }}">
+              {% for product in category.products %}
+                <li><span class="activity-category-row__product-rank">{{ forloop.counter }}</span><strong>{{ product.name }}</strong><span>{{ product.quantity }} vendu{% if product.quantity != 1 %}s{% endif %}</span><strong>{{ product.revenue|floatformat:0 }} FCFA</strong></li>
+              {% endfor %}
+            </ol>
+          {% else %}
+            <p class="activity-category-row__empty">Aucun produit vendu dans cette rubrique sur la période.</p>
+          {% endif %}
+        </details>
+      {% empty %}
+        <p class="activity-empty">Aucune vente de produit classée sur cette période.</p>
+      {% endfor %}
+      </div>
+    </div>
+  </details>
+
   <details class="activity-report">
     <summary><span><strong>Rentabilité et rotation des produits</strong><small>Stock actuel, marge fiable et produits à surveiller</small></span><span class="activity-report__toggle" aria-hidden="true">+</span></summary>
     <p class="activity-report__intro">Le chiffre d’affaires inclut les ventes actives. Coût, marge et taux ne sont calculés que lorsque le coût est fiable.</p>

@@ -133,11 +133,16 @@ def create_sale(activity, user, lines_data):
                 cost = Decimal(0)
                 margin_reliable = True
 
+            catalog_item = product or service
             line_total = unit_price * quantity
             SaleLine.objects.create(
                 sale=sale,
                 product=product,
                 service=service,
+                category_id_snapshot=catalog_item.category_id,
+                category_name_snapshot=(
+                    catalog_item.category.name if catalog_item.category_id else ""
+                ),
                 quantity=quantity,
                 unit_price=unit_price,
                 cost=cost,
