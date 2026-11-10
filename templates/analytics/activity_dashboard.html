@@ -24,20 +24,49 @@
   </header>
 
   <form method="get" class="activity-period" aria-label="Période des indicateurs">
-    <div class="activity-period__dates">
-      <label for="start">Du<input type="date" id="start" name="start" value="{{ start_date|date:'Y-m-d' }}" required></label>
-      <label for="end">Au<input type="date" id="end" name="end" value="{{ end_date|date:'Y-m-d' }}" required></label>
-    </div>
-    <button class="activity-period__submit" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-filter"></use></svg> Appliquer</button>
-    <span class="activity-period__range">{{ start_date|date:'d/m/Y' }} – {{ end_date|date:'d/m/Y' }}</span>
+    <input type="hidden" name="start" value="{{ start_date|date:'Y-m-d' }}">
+    <input type="hidden" name="end" value="{{ end_date|date:'Y-m-d' }}">
+    <button class="activity-period__open" type="button" aria-haspopup="dialog" aria-controls="activity-period-dialog">
+      <svg class="icon" aria-hidden="true" focusable="false"><use href="{% static 'img/icons.svg' %}#icon-filter"></use></svg>
+      <span><small>Période affichée</small><strong>{{ start_date|date:'d/m/Y' }} – {{ end_date|date:'d/m/Y' }}</strong></span>
+      <span class="activity-period__change">Modifier</span>
+    </button>
   </form>
+
+  <dialog class="activity-period-dialog" id="activity-period-dialog" aria-labelledby="activity-period-title">
+    <form method="dialog" class="activity-period-dialog__inner">
+      <header class="activity-period-dialog__header">
+        <div><p>INDICATEURS</p><h2 id="activity-period-title">Choisir une période</h2></div>
+        <button class="activity-period-dialog__close" type="submit" aria-label="Fermer">×</button>
+      </header>
+      <div class="activity-period-dialog__modes" role="group" aria-label="Type de période">
+        <button type="button" data-period-mode="day">Jour</button>
+        <button type="button" data-period-mode="week">Semaine</button>
+        <button type="button" data-period-mode="month">Mois</button>
+        <button type="button" data-period-mode="year">Année</button>
+      </div>
+      <label class="activity-period-dialog__date" for="activity-period-anchor">
+        <span id="activity-period-date-label">Choisir un jour</span>
+        <input type="date" id="activity-period-anchor" max="{% now 'Y-m-d' %}" value="{{ end_date|date:'Y-m-d' }}">
+      </label>
+      <div class="activity-period-preview" aria-live="polite">
+        <div class="activity-period-preview__caption"><span id="activity-period-description">Période sélectionnée</span><strong id="activity-period-summary"></strong></div>
+        <div class="activity-period-preview__track" id="activity-period-track" role="img" aria-label="Représentation de la période sélectionnée"></div>
+        <div class="activity-period-preview__ends"><span id="activity-period-start"></span><span id="activity-period-end"></span></div>
+      </div>
+      <p class="activity-period-dialog__error" id="activity-period-error" hidden></p>
+      <footer class="activity-period-dialog__actions">
+        <button class="activity-period-dialog__cancel" type="submit">Annuler</button>
+        <button class="activity-period-dialog__apply" id="activity-period-apply" type="button">Appliquer la période</button>
+      </footer>
+    </form>
+  </dialog>
 
   <section class="activity-overview" aria-label="Résumé de l’activité">
     <div class="activity-overview__main">
       <div>
         <p class="activity-overview__label">Total des ventes</p>
         <strong class="activity-overview__revenue">{{ metrics.revenue|floatformat:0 }} <small>FCFA</small></strong>
-        <p class="activity-overview__caption">{{ metrics.sale_count }} ticket{% if metrics.sale_count != 1 %}s{% endif %} non annulé{% if metrics.sale_count != 1 %}s{% endif %}</p>
       </div>
       <div class="activity-overview__comparison {% if metrics.revenue_change > 0 %}is-positive{% elif metrics.revenue_change < 0 %}is-negative{% endif %}">
         <span class="activity-overview__comparison-label">Évolution des ventes</span>
@@ -51,12 +80,12 @@
       </div>
     </div>
     <div class="activity-overview__breakdown">
-      <div><span>Ventes de produits</span><strong>{{ metrics.product_revenue|floatformat:0 }} <small>FCFA</small></strong><small>{{ metrics.product_line_count }} ligne{% if metrics.product_line_count != 1 %}s{% endif %}</small></div>
-      <div><span>Ventes de prestations</span><strong>{{ metrics.service_revenue|floatformat:0 }} <small>FCFA</small></strong><small>{{ metrics.service_line_count }} vendue{% if metrics.service_line_count != 1 %}s{% endif %}</small></div>
+      <div><span>Ventes de produits</span><strong>{{ metrics.product_revenue|floatformat:0 }} <small>FCFA</small></strong></div>
+      <div><span>Ventes de prestations</span><strong>{{ metrics.service_revenue|floatformat:0 }} <small>FCFA</small></strong></div>
       <div class="activity-overview__margin">
         <span>Marge estimée des produits</span>
-        {% if metrics.margin_coverage_percent != None %}<strong>{{ metrics.estimated_margin|floatformat:0 }} <small>FCFA</small></strong><small>{{ metrics.margin_coverage_percent|floatformat:0 }} % des lignes fiables</small>
-        {% else %}<strong>Non disponible</strong><small>Aucune vente de produit</small>{% endif %}
+        {% if metrics.margin_coverage_percent != None %}<strong>{{ metrics.estimated_margin|floatformat:0 }} <small>FCFA</small></strong>
+        {% else %}<strong>Non disponible</strong>{% endif %}
       </div>
     </div>
   </section>
@@ -144,5 +173,127 @@
   document.querySelector("#activity-switcher")?.addEventListener("change", (event) => {
     window.location.href = event.currentTarget.value;
   });
+
+  const periodForm = document.querySelector(".activity-period");
+  const periodDialog = document.getElementById("activity-period-dialog");
+
+  if (periodForm && periodDialog) {
+    const anchorInput = document.getElementById("activity-period-anchor");
+    const modeButtons = [...periodDialog.querySelectorAll("[data-period-mode]")];
+    const summary = document.getElementById("activity-period-summary");
+    const description = document.getElementById("activity-period-description");
+    const startLabel = document.getElementById("activity-period-start");
+    const endLabel = document.getElementById("activity-period-end");
+    const track = document.getElementById("activity-period-track");
+    const error = document.getElementById("activity-period-error");
+    const labels = { day: "Choisir un jour", week: "Choisir un jour de la semaine", month: "Choisir un jour du mois", year: "Choisir un jour de l’année" };
+    let activeMode = "day";
+    let selectedRange = null;
+
+    const parseDate = (value) => {
+      const [year, month, day] = value.split("-").map(Number);
+      return new Date(Date.UTC(year, month - 1, day));
+    };
+    const isoDate = (date) => date.toISOString().slice(0, 10);
+    const formatDate = (date) => new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(date);
+    const clampDate = (date, maximum) => date > maximum ? maximum : date;
+
+    const buildRange = () => {
+      if (!anchorInput.value) return null;
+      const anchor = parseDate(anchorInput.value);
+      const today = parseDate(anchorInput.max);
+      let start = new Date(anchor);
+      let end = new Date(anchor);
+
+      if (activeMode === "week") {
+        start.setUTCDate(anchor.getUTCDate() - ((anchor.getUTCDay() + 6) % 7));
+        end.setUTCDate(start.getUTCDate() + 6);
+        end = clampDate(end, today);
+      } else if (activeMode === "month") {
+        start = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+        end = clampDate(new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0)), today);
+      } else if (activeMode === "year") {
+        start = new Date(Date.UTC(anchor.getUTCFullYear(), 0, 1));
+        end = clampDate(new Date(Date.UTC(anchor.getUTCFullYear(), 11, 31)), today);
+      }
+      return { start, end };
+    };
+
+    const renderTrack = (range) => {
+      const anchor = parseDate(anchorInput.value);
+      const monthDays = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0)).getUTCDate();
+      const count = activeMode === "week" ? 7 : activeMode === "month" ? Math.ceil(monthDays / 7) : activeMode === "year" ? 12 : 1;
+      const cells = [];
+      for (let index = 0; index < count; index += 1) {
+        const segmentStart = activeMode === "month"
+          ? new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), index * 7 + 1))
+          : null;
+        const segmentEnd = activeMode === "month"
+          ? new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), Math.min((index + 1) * 7, monthDays)))
+          : null;
+        const date = activeMode === "week"
+          ? new Date(range.start.getTime() + index * 86400000)
+          : activeMode === "month"
+            ? segmentStart
+            : activeMode === "year"
+              ? new Date(Date.UTC(anchor.getUTCFullYear(), index, 1))
+              : new Date(anchor);
+        const selected = activeMode === "month"
+          ? segmentStart <= range.end && segmentEnd >= range.start
+          : date >= range.start && date <= range.end;
+        const cellLabel = activeMode === "month"
+          ? `S${index + 1}`
+          : activeMode === "year"
+          ? new Intl.DateTimeFormat("fr-FR", { month: "short", timeZone: "UTC" }).format(date).replace(".", "")
+          : activeMode === "day" ? "Jour" : String(date.getUTCDate());
+        cells.push(`<span class="activity-period-preview__cell${selected ? " is-selected" : ""}" aria-hidden="true">${cellLabel}</span>`);
+      }
+      track.innerHTML = cells.join("");
+      track.className = `activity-period-preview__track is-${activeMode}`;
+    };
+
+    const updatePreview = () => {
+      selectedRange = buildRange();
+      document.getElementById("activity-period-date-label").textContent = labels[activeMode];
+      modeButtons.forEach((button) => {
+        const isSelected = button.dataset.periodMode === activeMode;
+        button.classList.toggle("is-active", isSelected);
+        button.setAttribute("aria-pressed", String(isSelected));
+      });
+      error.hidden = true;
+      if (!selectedRange) return;
+      const { start, end } = selectedRange;
+      summary.textContent = activeMode === "day" ? formatDate(start) : `${formatDate(start)} – ${formatDate(end)}`;
+      description.textContent = { day: "Journée sélectionnée", week: "Semaine correspondante", month: "Mois correspondant", year: "Année correspondante" }[activeMode];
+      startLabel.textContent = `Début · ${formatDate(start)}`;
+      endLabel.textContent = `Fin · ${formatDate(end)}`;
+      renderTrack(selectedRange);
+    };
+
+    periodForm.querySelector(".activity-period__open").addEventListener("click", () => {
+      updatePreview();
+      periodDialog.showModal();
+    });
+    modeButtons.forEach((button) => button.addEventListener("click", () => {
+      activeMode = button.dataset.periodMode;
+      updatePreview();
+    }));
+    anchorInput.addEventListener("change", updatePreview);
+    periodDialog.addEventListener("click", (event) => {
+      if (event.target === periodDialog) periodDialog.close();
+    });
+    document.getElementById("activity-period-apply").addEventListener("click", () => {
+      if (!selectedRange || selectedRange.start > selectedRange.end) {
+        error.textContent = "Choisissez une date valide pour cette période.";
+        error.hidden = false;
+        return;
+      }
+      periodForm.elements.start.value = isoDate(selectedRange.start);
+      periodForm.elements.end.value = isoDate(selectedRange.end);
+      periodForm.requestSubmit();
+    });
+
+    updatePreview();
+  }
 </script>
 {% endblock %}

@@ -15,10 +15,10 @@
   </header>
 
   <section class="global-summary" aria-label="Résumé de la période">
-    <div class="global-summary__lead"><span>Total des ventes</span><strong>{{ totals.revenue|floatformat:0 }} <small>FCFA</small></strong><p>{{ totals.sale_count }} ticket(s) non annulé(s)</p></div>
+    <div class="global-summary__lead"><span>Total des ventes</span><strong>{{ totals.revenue|floatformat:0 }} <small>FCFA</small></strong></div>
     <div class="global-summary__stat"><span>Comparaison</span>{% if totals.revenue_change_percent != None %}<strong class="{% if totals.revenue_change > 0 %}is-positive{% elif totals.revenue_change < 0 %}is-negative{% endif %}">{% if totals.revenue_change > 0 %}En hausse de{% elif totals.revenue_change < 0 %}En baisse de{% else %}Stable à{% endif %} {{ totals.revenue_change_abs|floatformat:0 }} FCFA</strong><small>{% if totals.revenue_change_percent > 0 %}+{% endif %}{{ totals.revenue_change_percent|floatformat:1 }} % par rapport à la période précédente</small>{% else %}<strong>Pas de comparaison disponible</strong>{% endif %}</div>
-    <div class="global-summary__stat"><span>Marge estimée des produits</span>{% if totals.margin_coverage_percent != None %}<strong>{{ totals.estimated_margin|floatformat:0 }} FCFA</strong><small>{{ totals.reliable_margin_line_count }} ligne(s) fiable(s) sur {{ totals.product_line_count }} · {{ totals.margin_coverage_percent|floatformat:0 }} %</small>{% else %}<strong>Non disponible</strong><small>Aucune ligne produit à coût fiable</small>{% endif %}</div>
-    <div class="global-summary__stat"><span>Achats de stock</span><strong>{{ totals.stock_purchases|floatformat:0 }} FCFA</strong><small>{{ totals.stock_entry_count }} approvisionnement(s), non déduits des ventes</small></div>
+    <div class="global-summary__stat"><span>Marge estimée des produits</span>{% if totals.margin_coverage_percent != None %}<strong>{{ totals.estimated_margin|floatformat:0 }} FCFA</strong>{% else %}<strong>Non disponible</strong>{% endif %}</div>
+    <div class="global-summary__stat"><span>Achats de stock</span><strong>{{ totals.stock_purchases|floatformat:0 }} FCFA</strong></div>
   </section>
 
   <section class="dashboard-section global-section" aria-labelledby="activity-comparison-title">
@@ -44,9 +44,9 @@
     <section class="dashboard-section global-section" aria-labelledby="margin-ranking-title">
       <div class="section-heading"><h2 id="margin-ranking-title">Marge des produits</h2><span>Coûts fiables uniquement</span></div>
       <h3>Marges les plus élevées</h3>
-      <ol class="ranking-list ranking-list--compact">{% for item in item_rankings.profitable_products %}<li><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {{ item.reliable_line_count }} ligne(s) fiable(s)</small></span><strong class="ranking-list__value">{{ item.reliable_margin|floatformat:0 }} FCFA</strong></li>{% empty %}<li class="ranking-list__empty">Pas assez de coûts fiables pour classer les produits.</li>{% endfor %}</ol>
+      <ol class="ranking-list ranking-list--compact ranking-list--positive">{% for item in item_rankings.profitable_products %}<li><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {{ item.reliable_line_count }} ligne(s) fiable(s)</small></span><strong class="ranking-list__value">{{ item.reliable_margin|floatformat:0 }} FCFA</strong></li>{% empty %}<li class="ranking-list__empty">Pas assez de coûts fiables pour classer les produits.</li>{% endfor %}</ol>
       <h3 class="ranking-subtitle">À surveiller</h3>
-      <ol class="ranking-list ranking-list--compact">{% for item in item_rankings.low_margin_products %}<li><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {{ item.reliable_line_count }} ligne(s) fiable(s)</small></span><strong class="ranking-list__value {% if item.reliable_margin < 0 %}is-negative{% endif %}">{{ item.reliable_margin|floatformat:0 }} FCFA</strong></li>{% empty %}<li class="ranking-list__empty">Pas assez de coûts fiables pour classer les produits.</li>{% endfor %}</ol>
+      <ol class="ranking-list ranking-list--compact ranking-list--watch">{% for item in item_rankings.low_margin_products %}<li><span class="ranking-list__main"><strong>{{ item.name }}</strong><small>{{ item.activity }} · {{ item.reliable_line_count }} ligne(s) fiable(s)</small></span><strong class="ranking-list__value {% if item.reliable_margin < 0 %}is-negative{% endif %}">{{ item.reliable_margin|floatformat:0 }} FCFA</strong></li>{% empty %}<li class="ranking-list__empty">Pas assez de coûts fiables pour classer les produits.</li>{% endfor %}</ol>
     </section>
   </div>
 
